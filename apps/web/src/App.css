@@ -4,8 +4,9 @@
   border-radius: 5px;
   color: var(--accent);
   background: var(--accent-bg);
-
-
+  border: 2px solid transparent;
+  transition: border-color 0.3s;
+  margin-bottom: 24px;
 
   &:hover {
     border-color: var(--accent-border);
