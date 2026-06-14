@@ -29,6 +29,12 @@ import Login from "./pages/Login";
 import Register from "./pages/Register";
 import ForgotPassword from "./pages/ForgotPassword";
 import Dashboard from "./pages/Dashboard";
+import Wallet from "./pages/Wallet";
+import Transfer from "./pages/Transfer";
+import History from "./pages/History";
+import Settings from "./pages/Settings";
+import DashboardLayout from "./components/DashboardLayout";
+import { defaultSettings, getUserSettings } from "./services/settings.service";
 
 // Este helper evita duplicar la misma condición en todas las rutas públicas.
 // Si el usuario ya inició sesión, lo mandamos al Dashboard.
@@ -47,19 +53,84 @@ function App() {
   // Si es null, significa que no hay sesión activa.
   const [user, setUser] = useState(null);
 
-  // Controla si Firebase todavía está verificando la sesión.
-  const [loading, setLoading] = useState(true);
+  // Separamos la resolucion de auth de la carga de preferencias para evitar parpadeos.
+  const [authResolved, setAuthResolved] = useState(false);
+  const [settingsLoading, setSettingsLoading] = useState(false);
+
+  // Guardamos preferencias globales del usuario para aplicarlas en toda la app.
+  const [userSettings, setUserSettings] = useState(defaultSettings);
 
   useEffect(() => {
     // onAuthStateChanged revisa si hay usuario logueado.
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser);
-      setLoading(false);
+      setAuthResolved(true);
+      setSettingsLoading(Boolean(currentUser));
+
+      // Si no hay sesion, dejamos el tema base claro para pantallas publicas.
+      if (!currentUser) {
+        setUserSettings(defaultSettings);
+      }
     });
 
     // Limpiamos el listener cuando el componente deje de usarse.
     return () => unsubscribe();
   }, []);
+
+  useEffect(() => {
+    let ignore = false;
+
+    async function loadGlobalSettings() {
+      if (!user?.uid) {
+        setSettingsLoading(false);
+        return;
+      }
+
+      try {
+        // Cargamos preferencias del usuario para aplicarlas globalmente.
+        const currentSettings = await getUserSettings(user.uid);
+
+        if (!ignore) {
+          setUserSettings({
+            theme: currentSettings.theme,
+            language: currentSettings.language,
+            currency: currentSettings.currency,
+          });
+        }
+      } catch (error) {
+        console.error("Error al cargar preferencias globales:", error);
+
+        if (!ignore) {
+          setUserSettings(defaultSettings);
+        }
+      } finally {
+        if (!ignore) {
+          setSettingsLoading(false);
+        }
+      }
+    }
+
+    loadGlobalSettings();
+
+    return () => {
+      ignore = true;
+    };
+  }, [user?.uid]);
+
+  useEffect(() => {
+    // Aplicamos el tema elegido al documento para que toda la UI reaccione al cambio.
+    document.documentElement.dataset.theme = user ? userSettings.theme : "light";
+  }, [user, userSettings.theme]);
+
+  const loading = !authResolved || settingsLoading;
+
+  function handleSettingsSaved(nextSettings) {
+    // Cuando Settings guarda cambios, sincronizamos la preferencia en memoria.
+    setUserSettings((currentSettings) => ({
+      ...currentSettings,
+      ...nextSettings,
+    }));
+  }
 
   return (
     <BrowserRouter>
@@ -129,10 +200,28 @@ function App() {
             path="/dashboard"
             element={
               <ProtectedRoute user={user}>
-                <Dashboard user={user} />
+                <DashboardLayout user={user} userSettings={userSettings} />
               </ProtectedRoute>
             }
-          />
+          >
+            {/* La ruta indice mantiene el resumen principal dentro del layout protegido. */}
+            <Route index element={<Dashboard user={user} userSettings={userSettings} />} />
+
+            {/* Estas rutas dejan lista la base visual de los modulos siguientes. */}
+            <Route path="wallet" element={<Wallet user={user} userSettings={userSettings} />} />
+            <Route path="transfer" element={<Transfer user={user} userSettings={userSettings} />} />
+            <Route path="history" element={<History userSettings={userSettings} />} />
+            <Route
+              path="settings"
+              element={
+                <Settings
+                  user={user}
+                  userSettings={userSettings}
+                  onSettingsSaved={handleSettingsSaved}
+                />
+              }
+            />
+          </Route>
 
           {/* 
             Cualquier ruta desconocida vuelve al inicio.
