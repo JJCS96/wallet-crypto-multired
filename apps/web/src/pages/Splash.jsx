@@ -11,18 +11,18 @@ import BrandMark from "../components/BrandMark";
 */
 function Splash({ isCheckingSession = false }) {
   return (
-    <main className="auth-page">
-      <section className="auth-card splash-card">
-        {/* Elementos decorativos para acercarnos a la referencia visual. */}
-        <div className="splash-glow splash-glow--top" aria-hidden="true" />
-        <div className="splash-glow splash-glow--bottom" aria-hidden="true" />
+    <main className="auth-page wallet-auth-page">
+      <section className="auth-card splash-card wallet-auth-card wallet-auth-card--splash">
+        <div className="wallet-auth-orb wallet-auth-orb--top" aria-hidden="true" />
 
-        <BrandMark centered />
+        <div className="wallet-auth-logo">
+          <BrandMark centered dark />
+        </div>
 
-        <h1 className="auth-title">Tu wallet, tu control</h1>
+        <h1 className="auth-title wallet-auth-title">NovaWallet</h1>
 
-        <p className="auth-subtitle">
-          Guarda, envía y recibe cripto de forma segura.
+        <p className="auth-subtitle wallet-auth-subtitle">
+          Para empezar, crea una nueva billetera o importa una existente.
         </p>
 
         {isCheckingSession ? (
@@ -31,25 +31,17 @@ function Splash({ isCheckingSession = false }) {
             <div className="loader" aria-hidden="true" />
           </div>
         ) : (
-          <div className="auth-actions">
+          <div className="auth-actions wallet-auth-actions">
             {/* Usamos Link estilizado como botón para no mezclar button dentro de link. */}
-            <Link className="auth-button auth-button-link" to="/login">
-              Iniciar sesión
+            <Link className="auth-button auth-button-link wallet-primary-btn" to="/register">
+              Crear una nueva billetera
             </Link>
 
-            <Link className="auth-button-secondary auth-button-link" to="/register">
-              Crear cuenta
+            <Link className="auth-button-secondary auth-button-link wallet-secondary-btn" to="/login">
+              Ya tengo una billetera
             </Link>
           </div>
         )}
-
-        <div className="splash-landscape" aria-hidden="true">
-          <span className="splash-orb" />
-          <span className="splash-cloud splash-cloud--left" />
-          <span className="splash-cloud splash-cloud--right" />
-          <span className="splash-mountain splash-mountain--back" />
-          <span className="splash-mountain splash-mountain--front" />
-        </div>
       </section>
     </main>
   );

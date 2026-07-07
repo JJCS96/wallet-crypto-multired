@@ -19,6 +19,7 @@ import { onAuthStateChanged } from "firebase/auth";
 
 // Importamos la configuración de Firebase Authentication.
 import { auth } from "./lib/firebase";
+import { APP_ROUTES } from "./constants/routes";
 
 // Importamos estilos generales del módulo auth.
 import "./styles/auth.css";
@@ -29,12 +30,6 @@ import Login from "./pages/Login";
 import Register from "./pages/Register";
 import ForgotPassword from "./pages/ForgotPassword";
 import Dashboard from "./pages/Dashboard";
-import Wallet from "./pages/Wallet";
-import Transfer from "./pages/Transfer";
-import History from "./pages/History";
-import Settings from "./pages/Settings";
-import DashboardLayout from "./components/DashboardLayout";
-import { defaultSettings, getUserSettings } from "./services/settings.service";
 
 // Este helper evita duplicar la misma condición en todas las rutas públicas.
 // Si el usuario ya inició sesión, lo mandamos al Dashboard.
@@ -149,8 +144,8 @@ function App() {
             Si no hay sesión, muestra Splash.
           */}
           <Route
-            path="/"
-            element={user ? <Navigate to="/dashboard" replace /> : <Splash />}
+            path={APP_ROUTES.home}
+            element={user ? <Navigate to={APP_ROUTES.dashboard} replace /> : <Splash />}
           />
 
           {/* 
@@ -203,30 +198,12 @@ function App() {
                 <DashboardLayout user={user} userSettings={userSettings} />
               </ProtectedRoute>
             }
-          >
-            {/* La ruta indice mantiene el resumen principal dentro del layout protegido. */}
-            <Route index element={<Dashboard user={user} userSettings={userSettings} />} />
-
-            {/* Estas rutas dejan lista la base visual de los modulos siguientes. */}
-            <Route path="wallet" element={<Wallet user={user} userSettings={userSettings} />} />
-            <Route path="transfer" element={<Transfer user={user} userSettings={userSettings} />} />
-            <Route path="history" element={<History userSettings={userSettings} />} />
-            <Route
-              path="settings"
-              element={
-                <Settings
-                  user={user}
-                  userSettings={userSettings}
-                  onSettingsSaved={handleSettingsSaved}
-                />
-              }
-            />
-          </Route>
+          />
 
           {/* 
             Cualquier ruta desconocida vuelve al inicio.
           */}
-          <Route path="*" element={<Navigate to="/" replace />} />
+          <Route path="*" element={<Navigate to={APP_ROUTES.home} replace />} />
         </Routes>
       )}
     </BrowserRouter>

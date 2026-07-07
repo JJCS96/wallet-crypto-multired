@@ -2,216 +2,100 @@ import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 
 // Importamos la función que registra usuarios en Firebase.
-import { registerWithEmail } from "../services/auth.service";
+import { signInWithGoogle } from "../services/auth.service";
 import BrandMark from "../components/BrandMark";
 
 // Centralizamos los mensajes de error para que el flujo sea más fácil de mantener.
-function getRegisterErrorMessage(error) {
-  if (error?.code === "auth/email-already-in-use") {
-    return "Ese correo ya está registrado.";
+function getGoogleAuthErrorMessage(error) {
+  if (error?.code === "auth/popup-closed-by-user") {
+    return "Cerraste la ventana de Google antes de completar el acceso.";
   }
 
-  if (error?.code === "auth/invalid-email") {
-    return "Escribe un correo válido.";
+  if (error?.code === "auth/popup-blocked") {
+    return "El navegador bloqueó la ventana de Google. Permite popups para NovaWallet e intenta nuevamente.";
   }
 
-  if (error?.code === "auth/weak-password") {
-    return "La contraseña debe tener al menos 6 caracteres.";
+  if (error?.code === "auth/account-exists-with-different-credential") {
+    return "Ya existe una cuenta con ese correo usando otro método de acceso.";
   }
 
-  return "No se pudo crear la cuenta. Revisa los datos e intenta otra vez.";
+  if (error?.code === "auth/network-request-failed") {
+    return "No se pudo conectar con Firebase. Revisa tu conexión e intenta nuevamente.";
+  }
+
+  return "No se pudo continuar con Google. Intenta nuevamente.";
 }
 
 function Register() {
-  // Estados para capturar datos del formulario.
-  const [fullName, setFullName] = useState("");
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-
-  // Confirmación para validar que el usuario escribió bien su contraseña.
-  const [confirmPassword, setConfirmPassword] = useState("");
-
-  // Estados para mostrar errores y carga.
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-  const [acceptTerms, setAcceptTerms] = useState(false);
-  const [showPassword, setShowPassword] = useState(false);
 
   const navigate = useNavigate();
 
-  async function handleSubmit(event) {
-    event.preventDefault();
-
+  async function handleGoogleSignIn() {
     setError("");
-
-    if (!fullName.trim()) {
-      setError("Escribe tu nombre para continuar.");
-      return;
-    }
-
-    // Validación simple para evitar contraseñas diferentes.
-    if (password !== confirmPassword) {
-      setError("Las contraseñas no coinciden.");
-      return;
-    }
-
-    // Firebase pide mínimo 6 caracteres en la contraseña.
-    if (password.length < 6) {
-      setError("La contraseña debe tener mínimo 6 caracteres.");
-      return;
-    }
-
-    // Dejamos el check obligatorio porque en la maqueta representa el consentimiento base.
-    if (!acceptTerms) {
-      setError("Debes aceptar los términos para crear la cuenta.");
-      return;
-    }
-
     setLoading(true);
 
     try {
-      // Crea usuario en Firebase Authentication y guarda datos básicos en Firestore.
-      await registerWithEmail(email, password, fullName);
-
-      // Si el registro funciona, enviamos al dashboard.
+      await signInWithGoogle();
       navigate("/dashboard");
     } catch (error) {
-      console.error("Error al registrar:", error);
-      setError(getRegisterErrorMessage(error));
+      setError(getGoogleAuthErrorMessage(error));
     } finally {
       setLoading(false);
     }
   }
 
   return (
-    <main className="auth-page">
-      <section className="auth-card auth-card--form">
-        <BrandMark compact />
+    <main className="auth-page auth-page--access wallet-auth-page">
+      <section className="auth-card auth-card--form auth-card--register wallet-auth-card">
+        <div className="wallet-auth-topbar">
+          <button className="wallet-back-button" type="button" onClick={() => navigate("/")} aria-label="Volver al inicio">
+            ←
+          </button>
+        </div>
 
-        <div className="auth-headline auth-headline--left">
-          <h1 className="auth-title auth-title--left">Crear cuenta</h1>
-          <p className="auth-subtitle auth-subtitle--left">
-            Completa tus datos para comenzar
+        <div className="wallet-auth-logo wallet-auth-logo--compact">
+          <BrandMark centered dark />
+        </div>
+
+        <div className="auth-headline">
+          <h1 className="auth-title wallet-auth-title">Crear cuenta</h1>
+          <p className="auth-subtitle wallet-auth-subtitle">
+            Google protege el acceso a tu cuenta. Tu frase de recuperación protege tu wallet.
           </p>
+        </div>
+
+        <div className="auth-stepper auth-stepper--compact" aria-label="Progreso del registro">
+          <div className="auth-step active">
+            <span aria-hidden="true" />
+            <small>Cuenta</small>
+          </div>
+          <div className="auth-step">
+            <span aria-hidden="true" />
+            <small>Wallet</small>
+          </div>
+          <div className="auth-step">
+            <span aria-hidden="true" />
+            <small>Listo</small>
+          </div>
         </div>
 
         {error && <div className="auth-error">{error}</div>}
 
-        <form className="auth-form" onSubmit={handleSubmit}>
-          <div className="form-group">
-            <label htmlFor="register-name">Nombre</label>
-
-            <div className="input-shell">
-              <span className="input-icon" aria-hidden="true">
-                U
-              </span>
-
-              <input
-                id="register-name"
-                type="text"
-                placeholder="Tu nombre"
-                value={fullName}
-                onChange={(event) => setFullName(event.target.value)}
-                required
-              />
-            </div>
-          </div>
-
-          <div className="form-group">
-            <label htmlFor="register-email">Email</label>
-
-            <div className="input-shell">
-              <span className="input-icon" aria-hidden="true">
-                @
-              </span>
-
-              <input
-                id="register-email"
-                type="email"
-                placeholder="correo@ejemplo.com"
-                value={email}
-                onChange={(event) => setEmail(event.target.value)}
-                required
-              />
-            </div>
-          </div>
-
-          <div className="form-group">
-            <label htmlFor="register-password">Contraseña</label>
-
-            <div className="input-shell">
-              <span className="input-icon" aria-hidden="true">
-                *
-              </span>
-
-              <input
-                id="register-password"
-                type={showPassword ? "text" : "password"}
-                placeholder="Minimo 6 caracteres"
-                value={password}
-                onChange={(event) => setPassword(event.target.value)}
-                required
-              />
-
-              <button
-                className="input-toggle"
-                type="button"
-                onClick={() => setShowPassword((currentValue) => !currentValue)}
-              >
-                {showPassword ? "Ocultar" : "Ver"}
-              </button>
-            </div>
-          </div>
-
-          <div className="form-group">
-            <label htmlFor="register-confirm-password">Confirmar contraseña</label>
-
-            <div className="input-shell">
-              <span className="input-icon" aria-hidden="true">
-                *
-              </span>
-
-              <input
-                id="register-confirm-password"
-                type={showPassword ? "text" : "password"}
-                placeholder="Repite la contraseña"
-                value={confirmPassword}
-                onChange={(event) => setConfirmPassword(event.target.value)}
-                required
-              />
-
-              <button
-                className="input-toggle"
-                type="button"
-                onClick={() => setShowPassword((currentValue) => !currentValue)}
-              >
-                {showPassword ? "Ocultar" : "Ver"}
-              </button>
-            </div>
-          </div>
-
-          <label className="checkbox-row" htmlFor="register-terms">
-            <input
-              id="register-terms"
-              type="checkbox"
-              checked={acceptTerms}
-              onChange={(event) => setAcceptTerms(event.target.checked)}
-            />
-
-            <span>
-              Acepto los <span className="inline-link-text">Términos y Condiciones</span> y la{" "}
-              <span className="inline-link-text">Política de Privacidad</span>
-            </span>
-          </label>
-
-          <button className="auth-button" type="submit" disabled={loading}>
-            {loading ? "Creando cuenta..." : "Crear cuenta"}
+        <div className="wallet-google-panel">
+          <button className="auth-button wallet-primary-btn wallet-google-btn" type="button" disabled={loading} onClick={handleGoogleSignIn}>
+            <span aria-hidden="true">G</span>
+            {loading ? "Conectando con Google..." : "Continuar con Google"}
           </button>
-        </form>
+          <p className="wallet-auth-note">NovaWallet no guarda tu frase semilla. Para recuperar tu wallet necesitas tus 12 palabras.</p>
+        </div>
 
         <p className="auth-link-text">
-          ¿Ya tienes cuenta? <Link to="/login">Iniciar sesión</Link>
+          ¿Ya tienes una billetera? <Link to="/login">Desbloquear NovaWallet</Link>
         </p>
+
+        <p className="wallet-auth-owner-note">Tú eres el único dueño de tu wallet.</p>
       </section>
     </main>
   );

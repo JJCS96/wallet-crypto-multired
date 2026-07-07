@@ -1,9 +1,10 @@
 import { useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 
 // Importamos la función que envía el correo de recuperación.
 import { sendPasswordReset } from "../services/auth.service";
 import BrandMark from "../components/BrandMark";
+import SecurityNotice from "../components/security/SecurityNotice";
 
 // Unificamos mensajes para que la experiencia sea consistente.
 function getResetErrorMessage(error) {
@@ -19,6 +20,8 @@ function getResetErrorMessage(error) {
 }
 
 function ForgotPassword() {
+  const navigate = useNavigate();
+
   // Estado para capturar el correo.
   const [email, setEmail] = useState("");
 
@@ -48,21 +51,36 @@ function ForgotPassword() {
   }
 
   return (
-    <main className="auth-page">
-      <section className="auth-card auth-card--form auth-card--forgot">
-        <BrandMark centered compact />
+    <main className="auth-page auth-page--access wallet-auth-page">
+      <section className="auth-card auth-card--form auth-card--forgot auth-card--recover wallet-auth-card">
+        <div className="wallet-auth-topbar">
+          <button className="wallet-back-button" type="button" onClick={() => navigate("/login")} aria-label="Volver al login">
+            ←
+          </button>
+        </div>
 
-        <h1 className="auth-title">Recuperar contraseña</h1>
-        <p className="auth-subtitle">
-          Te enviaremos un enlace para restablecer tu contraseña.
+        <div className="wallet-auth-logo wallet-auth-logo--compact">
+          <BrandMark centered dark />
+        </div>
+
+        <h1 className="auth-title wallet-auth-title">Recuperar acceso</h1>
+        <p className="auth-subtitle wallet-auth-subtitle">
+          Esto solo recupera tu cuenta. Para restaurar tu wallet necesitas tu frase semilla.
         </p>
+
+        <div className="recover-mail-art" aria-hidden="true">
+          <span className="recover-envelope" />
+          <span className="recover-letter" />
+          <span className="recover-lock" />
+          <span className="recover-plane" />
+        </div>
 
         {message && <div className="auth-success">{message}</div>}
         {error && <div className="auth-error">{error}</div>}
 
         <form className="auth-form" onSubmit={handleSubmit}>
           <div className="form-group">
-            <label htmlFor="reset-email">Email</label>
+            <label htmlFor="reset-email">Correo electrónico</label>
 
             <div className="input-shell">
               <span className="input-icon" aria-hidden="true">
@@ -72,7 +90,7 @@ function ForgotPassword() {
               <input
                 id="reset-email"
                 type="email"
-                placeholder="correo@ejemplo.com"
+                placeholder="Ingresa tu correo electrónico"
                 value={email}
                 onChange={(event) => setEmail(event.target.value)}
                 required
@@ -80,21 +98,24 @@ function ForgotPassword() {
             </div>
           </div>
 
-          <button className="auth-button" type="submit" disabled={loading}>
-            {loading ? "Enviando..." : "Enviar enlace"}
+          <button className="auth-button wallet-primary-btn" type="submit" disabled={loading}>
+            {loading ? "Enviando..." : "Enviar enlace de recuperación"}
           </button>
         </form>
 
-        <div className="forgot-illustration" aria-hidden="true">
-          <div className="forgot-envelope">
-            <span className="forgot-envelope__flap" />
-            <span className="forgot-envelope__shield">*</span>
-          </div>
-        </div>
+        <SecurityNotice type="account-recovery" style={{ marginTop: "22px", marginBottom: 0 }} />
 
         <p className="auth-link-text">
           <Link to="/login">Volver al inicio de sesión</Link>
         </p>
+
+        <div className="auth-bottom-note">
+          <span aria-hidden="true">SR</span>
+          <div>
+            <strong>Recuperación segura</strong>
+            <p>Solo tú puedes recuperar tu wallet con tu frase semilla.</p>
+          </div>
+        </div>
       </section>
     </main>
   );

@@ -2,131 +2,91 @@ import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 
 // Importamos la función que permite iniciar sesión con Firebase.
-import { loginWithEmail } from "../services/auth.service";
+import { signInWithGoogle } from "../services/auth.service";
 import BrandMark from "../components/BrandMark";
 
 // Traducimos errores comunes de Firebase a mensajes más claros para el equipo y el usuario.
-function getLoginErrorMessage(error) {
-  if (error?.code === "auth/invalid-credential") {
-    return "Correo o contraseña incorrectos.";
+function getGoogleAuthErrorMessage(error) {
+  if (error?.code === "auth/popup-closed-by-user") {
+    return "Cerraste la ventana de Google antes de completar el acceso.";
   }
 
-  if (error?.code === "auth/too-many-requests") {
-    return "Demasiados intentos. Espera un momento e intenta otra vez.";
+  if (error?.code === "auth/popup-blocked") {
+    return "El navegador bloqueó la ventana de Google. Permite popups para NovaWallet e intenta nuevamente.";
   }
 
-  return "No se pudo iniciar sesión. Intenta nuevamente.";
+  if (error?.code === "auth/account-exists-with-different-credential") {
+    return "Ya existe una cuenta con ese correo usando otro método de acceso.";
+  }
+
+  if (error?.code === "auth/network-request-failed") {
+    return "No se pudo conectar con Firebase. Revisa tu conexión e intenta nuevamente.";
+  }
+
+  return "No se pudo continuar con Google. Intenta nuevamente.";
 }
 
 function Login() {
-  // Estados para capturar lo que escribe el usuario.
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-
-  // Estados para controlar errores y carga.
+  const navigate = useNavigate();
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-  const [showPassword, setShowPassword] = useState(false);
 
-  // Permite redirigir al usuario a otra ruta.
-  const navigate = useNavigate();
-
-  async function handleSubmit(event) {
-    event.preventDefault();
-
+  async function handleGoogleSignIn() {
     setError("");
     setLoading(true);
 
     try {
-      // Validamos el correo y contraseña usando Firebase Authentication.
-      await loginWithEmail(email, password);
-
-      // Si el login funciona, enviamos al dashboard protegido.
+      await signInWithGoogle();
       navigate("/dashboard");
     } catch (error) {
-      console.error("Error al iniciar sesión:", error);
-      setError(getLoginErrorMessage(error));
+      setError(getGoogleAuthErrorMessage(error));
     } finally {
       setLoading(false);
     }
   }
 
   return (
-    <main className="auth-page">
-      <section className="auth-card auth-card--form">
-        <BrandMark centered compact />
+    <main className="auth-page auth-page--access wallet-auth-page">
+      <section className="auth-card auth-card--form auth-card--login wallet-auth-card">
+        <div className="wallet-auth-topbar">
+          <button className="wallet-back-button" type="button" onClick={() => navigate("/")} aria-label="Volver al inicio">
+            ←
+          </button>
+        </div>
 
-        <h1 className="auth-title">Bienvenido de nuevo</h1>
-        <p className="auth-subtitle">Inicia sesión para continuar</p>
+        <div className="wallet-auth-logo wallet-auth-logo--compact">
+          <BrandMark centered dark />
+        </div>
+
+        <h1 className="auth-title wallet-auth-title">Desbloquear NovaWallet</h1>
+        <p className="auth-subtitle wallet-auth-subtitle">
+          Google protege el acceso a tu cuenta. Tu frase de recuperación protege tu wallet.
+        </p>
+
+        <div className="login-hero-art" aria-hidden="true">
+          <span className="login-orbit" />
+          <span className="login-wallet-stack login-wallet-stack--back" />
+          <span className="login-wallet-stack login-wallet-stack--middle" />
+          <span className="login-wallet-stack login-wallet-stack--front">
+            <span className="login-fingerprint" />
+          </span>
+          <span className="login-token login-token--sol">S</span>
+          <span className="login-token login-token--btc">B</span>
+          <span className="login-token login-token--bnb">N</span>
+        </div>
 
         {error && <div className="auth-error">{error}</div>}
 
-        <form className="auth-form" onSubmit={handleSubmit}>
-          <div className="form-group">
-            <label htmlFor="login-email">Email</label>
-
-            <div className="input-shell">
-              <span className="input-icon" aria-hidden="true">
-                @
-              </span>
-
-              <input
-                id="login-email"
-                type="email"
-                placeholder="correo@ejemplo.com"
-                value={email}
-                onChange={(event) => setEmail(event.target.value)}
-                required
-              />
-            </div>
-          </div>
-
-          <div className="form-group">
-            <div className="form-label-row">
-              <label htmlFor="login-password">Contraseña</label>
-              <Link className="inline-link" to="/forgot-password">
-                ¿Olvidaste tu contraseña?
-              </Link>
-            </div>
-
-            <div className="input-shell">
-              <span className="input-icon" aria-hidden="true">
-                *
-              </span>
-
-              <input
-                id="login-password"
-                type={showPassword ? "text" : "password"}
-                placeholder="Ingresa tu contraseña"
-                value={password}
-                onChange={(event) => setPassword(event.target.value)}
-                required
-              />
-
-              <button
-                className="input-toggle"
-                type="button"
-                onClick={() => setShowPassword((currentValue) => !currentValue)}
-              >
-                {showPassword ? "Ocultar" : "Ver"}
-              </button>
-            </div>
-          </div>
-
-          <button className="auth-button" type="submit" disabled={loading}>
-            {loading ? "Iniciando sesión..." : "Iniciar sesión"}
+        <div className="wallet-google-panel">
+          <button className="auth-button wallet-primary-btn wallet-google-btn" type="button" disabled={loading} onClick={handleGoogleSignIn}>
+            <span aria-hidden="true">G</span>
+            {loading ? "Conectando con Google..." : "Continuar con Google"}
           </button>
-        </form>
-
-        <div className="auth-divider">o continuar con</div>
-
-        {/* El botón de Google queda como maqueta visual para una fase futura. */}
-        <button className="google-button" type="button" disabled>
-          Continuar con Google
-        </button>
+          <p className="wallet-auth-note">NovaWallet no guarda tu frase semilla. Para recuperar tu wallet necesitas tus 12 palabras.</p>
+        </div>
 
         <p className="auth-link-text">
-          ¿No tienes cuenta? <Link to="/register">Crear cuenta</Link>
+          <Link to="/register">Crear una nueva billetera</Link>
         </p>
       </section>
     </main>

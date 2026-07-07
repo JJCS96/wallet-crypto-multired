@@ -1,6 +1,8 @@
 // Importamos las funciones principales de Firebase Authentication.
 import {
   createUserWithEmailAndPassword,
+  GoogleAuthProvider,
+  signInWithPopup,
   signInWithEmailAndPassword,
   sendPasswordResetEmail,
   signOut,
@@ -10,12 +12,47 @@ import {
 // Importamos funciones de Firestore para crear documentos en la base de datos.
 import {
   doc,
+  getDoc,
   setDoc,
   serverTimestamp,
 } from "firebase/firestore";
 
 // Importamos la conexión a Firebase Authentication y Firestore.
 import { auth, db } from "../lib/firebase";
+
+function getGoogleDisplayName(user) {
+  return user.displayName || user.email?.split("@")[0] || "Usuario NovaWallet";
+}
+
+async function ensureUserProfileDocuments(user) {
+  const userReference = doc(db, "users", user.uid);
+  const settingsReference = doc(db, "settings", user.uid);
+  const [userSnapshot, settingsSnapshot] = await Promise.all([
+    getDoc(userReference),
+    getDoc(settingsReference),
+  ]);
+
+  if (!userSnapshot.exists()) {
+    await setDoc(userReference, {
+      uid: user.uid,
+      name: getGoogleDisplayName(user),
+      email: user.email || "",
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    });
+  }
+
+  if (!settingsSnapshot.exists()) {
+    await setDoc(settingsReference, {
+      uid: user.uid,
+      theme: "dark",
+      language: "es",
+      currency: "USD",
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    });
+  }
+}
 
 /**
  * Registra un nuevo usuario con correo y contraseña.
@@ -78,6 +115,28 @@ export async function loginWithEmail(email, password) {
 
   // Retornamos el usuario autenticado.
   return credential.user;
+}
+
+/**
+ * Autentica la cuenta del usuario con Google.
+ * La frase semilla sigue siendo el único mecanismo para crear o restaurar la Wallet.
+ */
+export async function signInWithGoogle() {
+  const provider = new GoogleAuthProvider();
+  provider.setCustomParameters({
+    prompt: "select_account",
+  });
+
+  try {
+    const credential = await signInWithPopup(auth, provider);
+    await ensureUserProfileDocuments(credential.user);
+
+    return credential.user;
+  } catch (error) {
+    const googleError = new Error(error?.code || "auth/google-sign-in-failed");
+    googleError.code = error?.code || "auth/google-sign-in-failed";
+    throw googleError;
+  }
 }
 
 /**
