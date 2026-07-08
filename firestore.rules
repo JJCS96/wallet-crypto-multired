@@ -1,0 +1,180 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function sensitiveFields() {
+      return [
+        'mnemonic',
+        'seed',
+        'seedPhrase',
+        'privateKey',
+        'privateKeys',
+        'secretKey',
+        'secretKeys',
+        'encryptedSeed',
+        'password',
+        'authorizationMnemonic',
+        'mnemonicSource'
+      ];
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(uid) {
+      return isSignedIn() && request.auth.uid == uid;
+    }
+
+    function hasNoSensitiveFields(data) {
+      return !data.keys().hasAny(sensitiveFields());
+    }
+
+    function isValidTimestamp(value) {
+      return value is timestamp;
+    }
+
+    function isValidUserDocument(uid, data) {
+      return hasNoSensitiveFields(data)
+        && data.keys().hasOnly(['uid', 'name', 'email', 'createdAt', 'updatedAt'])
+        && data.keys().hasAll(['uid', 'name', 'email', 'createdAt', 'updatedAt'])
+        && data.uid == uid
+        && data.name is string
+        && data.email is string
+        && isValidTimestamp(data.createdAt)
+        && isValidTimestamp(data.updatedAt);
+    }
+
+    function isValidSettingsDocument(uid, data) {
+      return hasNoSensitiveFields(data)
+        && data.keys().hasOnly(['uid', 'theme', 'language', 'currency', 'createdAt', 'updatedAt'])
+        && data.keys().hasAll(['uid', 'theme', 'language', 'currency', 'createdAt', 'updatedAt'])
+        && data.uid == uid
+        && data.theme is string
+        && data.language is string
+        && data.currency is string
+        && isValidTimestamp(data.createdAt)
+        && isValidTimestamp(data.updatedAt);
+    }
+
+    function isValidWalletDocument(walletId, data) {
+      return walletId == 'main'
+        && hasNoSensitiveFields(data)
+        && data.keys().hasOnly(['solanaAddress', 'bitcoinAddress', 'bnbAddress', 'createdAt', 'updatedAt', 'restoredAt'])
+        && data.keys().hasAll(['solanaAddress', 'bitcoinAddress', 'bnbAddress', 'createdAt', 'updatedAt'])
+        && data.solanaAddress is string
+        && data.bitcoinAddress is string
+        && data.bnbAddress is string
+        && isValidTimestamp(data.createdAt)
+        && isValidTimestamp(data.updatedAt)
+        && (!('restoredAt' in data) || isValidTimestamp(data.restoredAt));
+    }
+
+    function isValidTransactionDocument(data) {
+      return hasNoSensitiveFields(data)
+        && data.keys().hasOnly([
+          'network',
+          'assetType',
+          'tokenStandard',
+          'tokenSymbol',
+          'tokenMint',
+          'tokenAddress',
+          'fromAddress',
+          'toAddress',
+          'amount',
+          'sentAmount',
+          'networkFee',
+          'appFee',
+          'appFeeRate',
+          'totalDebit',
+          'adminWallet',
+          'status',
+          'mode',
+          'txHash',
+          'signature',
+          'slot',
+          'blockTime',
+          'explorerUrl',
+          'confirmationStatus',
+          'appFeeMode',
+          'chainId',
+          'gasUsed',
+          'gasPrice',
+          'feeRate',
+          'direction',
+          'source',
+          'createdAt',
+          'updatedAt'
+        ])
+        && data.keys().hasAll([
+          'network',
+          'fromAddress',
+          'toAddress',
+          'amount',
+          'networkFee',
+          'appFee',
+          'totalDebit',
+          'adminWallet',
+          'status',
+          'mode',
+          'createdAt',
+          'updatedAt'
+        ])
+        && data.network in ['solana', 'bitcoin', 'bnb']
+        && (!('assetType' in data) || data.assetType in ['native', 'token'])
+        && (!('tokenStandard' in data) || data.tokenStandard == null || data.tokenStandard in ['SPL', 'BEP20'])
+        && (!('tokenSymbol' in data) || data.tokenSymbol == null || data.tokenSymbol is string)
+        && (!('tokenMint' in data) || data.tokenMint == null || data.tokenMint is string)
+        && (!('tokenAddress' in data) || data.tokenAddress == null || data.tokenAddress is string)
+        && data.fromAddress is string
+        && data.toAddress is string
+        && data.amount is number
+        && data.networkFee is number
+        && data.appFee is number
+        && data.totalDebit is number
+        && data.adminWallet is string
+        && data.status in ['simulated', 'success']
+        && data.mode in ['simulated', 'real-devnet', 'real-testnet']
+        && (!('direction' in data) || data.direction in ['incoming', 'outgoing'])
+        && (!('source' in data) || data.source in ['app-send', 'blockchain-sync'])
+        && isValidTimestamp(data.createdAt)
+        && isValidTimestamp(data.updatedAt)
+        && (!('sentAmount' in data) || data.sentAmount is number)
+        && (!('appFeeRate' in data) || data.appFeeRate is number)
+        && (!('txHash' in data) || data.txHash == null || data.txHash is string)
+        && (!('signature' in data) || data.signature is string)
+        && (!('slot' in data) || data.slot == null || data.slot is number)
+        && (!('blockTime' in data) || data.blockTime == null || data.blockTime is number)
+        && (!('explorerUrl' in data) || data.explorerUrl is string)
+        && (!('confirmationStatus' in data) || data.confirmationStatus in ['processed', 'confirmed', 'finalized', 'broadcast'])
+        && (!('appFeeMode' in data) || data.appFeeMode in ['on-chain', 'documented', 'pending'])
+        && (!('chainId' in data) || data.chainId is number)
+        && (!('gasUsed' in data) || data.gasUsed is number)
+        && (!('gasPrice' in data) || data.gasPrice is string)
+        && (!('feeRate' in data) || data.feeRate is number);
+    }
+
+    match /users/{uid} {
+      allow read: if isOwner(uid);
+      allow create, update: if isOwner(uid) && isValidUserDocument(uid, request.resource.data);
+      allow delete: if false;
+
+      match /wallets/{walletId} {
+        allow read: if isOwner(uid);
+        allow create, update: if isOwner(uid) && isValidWalletDocument(walletId, request.resource.data);
+        allow delete: if false;
+      }
+
+      match /transactions/{transactionId} {
+        allow read: if isOwner(uid);
+        allow create: if isOwner(uid) && isValidTransactionDocument(request.resource.data);
+        allow update, delete: if false;
+      }
+    }
+
+    match /settings/{uid} {
+      allow read: if isOwner(uid);
+      allow create, update: if isOwner(uid) && isValidSettingsDocument(uid, request.resource.data);
+      allow delete: if false;
+    }
+  }
+}
