@@ -50,7 +50,7 @@ export async function getBalanceByNetwork(networkId, wallet, assetId = null) {
         balance: null,
         source: error?.message === "spl-token-not-configured" ? "missing-token-config" : "rpc-error",
         error: error?.message === "spl-token-not-configured"
-          ? "Token demo no configurado"
+          ? "Token demo requiere configuración técnica"
           : "No se pudo consultar el balance real de Solana Devnet en este momento.",
       };
     }
@@ -84,7 +84,7 @@ export async function getBalanceByNetwork(networkId, wallet, assetId = null) {
           ? "missing-token-config"
           : error?.message === "bnb-rpc-not-configured" ? "missing-rpc" : "rpc-error",
         error: error?.message === "bep20-token-not-configured"
-          ? "Token demo no configurado"
+          ? "Token demo requiere configuración técnica"
           : error?.message === "bep20-contract-not-found"
             ? "El contrato BEP20 demo no existe en BNB Smart Chain Testnet."
           : error?.message === "bnb-rpc-not-configured"

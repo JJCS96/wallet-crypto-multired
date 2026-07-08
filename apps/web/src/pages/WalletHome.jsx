@@ -4,7 +4,7 @@ import AppShell from "../components/layout/AppShell";
 import AddressListCard from "../components/wallet/AddressListCard";
 import WalletEmptyState from "../components/wallet/WalletEmptyState";
 import { APP_ROUTES } from "../constants/routes";
-import { ASSETS, ASSET_IDS } from "../config/assets";
+import { ASSETS, ASSET_IDS, getAssetDisplayName } from "../config/assets";
 import { getUserWallet } from "../services/user-wallets.service";
 import { getBalanceByNetwork } from "../services/blockchain/balance.service";
 import { syncWalletActivity } from "../services/transactions/activity-sync.service";
@@ -286,7 +286,7 @@ function WalletHome({ user }) {
     setRefreshTick((currentTick) => currentTick + 1);
   }
 
-  const assetStatuses = [
+  const allAssetStatuses = [
     {
       name: "SOL",
       network: "Solana Devnet real",
@@ -300,17 +300,17 @@ function WalletHome({ user }) {
       configured: true,
     },
     {
-      name: ASSETS[ASSET_IDS.solanaSplDemo].symbol,
+      name: getAssetDisplayName(ASSETS[ASSET_IDS.solanaSplDemo]),
       network: "Solana Devnet token demo",
       balance: !ASSETS[ASSET_IDS.solanaSplDemo].configured
-        ? "No configurado"
+        ? "Requiere configuración"
         : splBalanceLoading
           ? "Consultando..."
           : typeof splBalance === "number"
             ? `${formatBalance(splBalance)} ${ASSETS[ASSET_IDS.solanaSplDemo].symbol}`
             : "Balance no disponible",
-      badge: "SPL Demo",
-      note: splBalanceError || "Token demo SPL.",
+      badge: "SPL",
+      note: splBalanceError || "Token demo en red de prueba.",
       configured: ASSETS[ASSET_IDS.solanaSplDemo].configured,
     },
     {
@@ -326,17 +326,17 @@ function WalletHome({ user }) {
       configured: true,
     },
     {
-      name: ASSETS[ASSET_IDS.bnbBep20Demo].symbol,
+      name: getAssetDisplayName(ASSETS[ASSET_IDS.bnbBep20Demo]),
       network: "BNB Testnet token demo",
       balance: !ASSETS[ASSET_IDS.bnbBep20Demo].configured
-        ? "No configurado"
+        ? "Requiere configuración"
         : bep20BalanceLoading
           ? "Consultando..."
           : typeof bep20Balance === "number"
             ? `${formatBalance(bep20Balance)} ${ASSETS[ASSET_IDS.bnbBep20Demo].symbol}`
             : "Balance no disponible",
-      badge: "BEP20 Demo",
-      note: bep20BalanceError || "Token demo BEP20.",
+      badge: "BEP20",
+      note: bep20BalanceError || "Token demo en red de prueba.",
       configured: ASSETS[ASSET_IDS.bnbBep20Demo].configured,
     },
     {
@@ -355,13 +355,13 @@ function WalletHome({ user }) {
       configured: true,
     },
   ];
+  const assetStatuses = allAssetStatuses.filter((asset) => asset.configured !== false);
   const supportedAssetCount = assetStatuses.length;
   const activeAssetCount = assetStatuses.filter((asset) => asset.configured !== false).length;
-  const unconfiguredAssetCount = assetStatuses.filter((asset) => asset.configured === false).length;
 
   function getAssetState(asset) {
-    if (asset.configured === false || asset.balance === "Token demo no configurado" || asset.balance === "No configurado") {
-      return "No configurado";
+    if (asset.configured === false || asset.balance === "No configurado" || asset.balance === "Requiere configuración") {
+      return "No disponible";
     }
 
     if (asset.balance === "Balance no disponible" || asset.balance === "No disponible") {
@@ -372,7 +372,7 @@ function WalletHome({ user }) {
   }
 
   function getAssetDescription(asset) {
-    if (asset.balance === "Token demo no configurado" || asset.balance === "No configurado") {
+    if (asset.balance === "No configurado" || asset.balance === "Requiere configuración") {
       return asset.badge === "SPL Demo"
         ? "Configura el mint en .env.local."
         : "Configura el contrato en .env.local.";
@@ -430,13 +430,10 @@ function WalletHome({ user }) {
               <p className="placeholder-kicker">Resumen multired</p>
               <h2 className="placeholder-title">{user.displayName || user.email}</h2>
               <p className="placeholder-copy">
-                Activos soportados: <strong>{supportedAssetCount}</strong>
+                Activos disponibles: <strong>{supportedAssetCount}</strong>
               </p>
               <p className="placeholder-copy">
-                Activos activos: <strong>{activeAssetCount} / {supportedAssetCount}</strong>
-              </p>
-              <p className="placeholder-copy">
-                Tokens no configurados: <strong>{unconfiguredAssetCount}</strong>
+                Activos listos: <strong>{activeAssetCount} / {supportedAssetCount}</strong>
               </p>
               <p className="placeholder-copy">
                 Redes: <strong>Solana, BNB Testnet y Bitcoin Testnet</strong>

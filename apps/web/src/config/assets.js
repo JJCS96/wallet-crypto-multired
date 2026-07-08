@@ -73,6 +73,14 @@ export function getAssetById(assetId) {
   return ASSETS[assetId] || ASSETS[ASSET_IDS.solanaNative];
 }
 
+export function getAssetDisplayName(asset) {
+  if (asset.assetType === "token") {
+    return `${asset.symbol} ${asset.tokenStandard}`;
+  }
+
+  return asset.name;
+}
+
 export function getDefaultAssetIdForNetwork(networkId) {
   if (networkId === "bnb") {
     return ASSET_IDS.bnbNative;
@@ -85,6 +93,16 @@ export function getDefaultAssetIdForNetwork(networkId) {
   return ASSET_IDS.solanaNative;
 }
 
+export function isAssetVisible(asset) {
+  return asset.assetType === "native" || asset.configured === true;
+}
+
+export function getVisibleAssetIds() {
+  return Object.values(ASSETS)
+    .filter(isAssetVisible)
+    .map((asset) => asset.id);
+}
+
 export function getAssetsForNetwork(networkId) {
-  return Object.values(ASSETS).filter((asset) => asset.network === networkId);
+  return Object.values(ASSETS).filter((asset) => asset.network === networkId && isAssetVisible(asset));
 }

@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import AppShell from "../components/layout/AppShell";
 import DashboardHome from "../components/dashboard/DashboardHome";
 import WalletEmptyState from "../components/wallet/WalletEmptyState";
-import { ASSETS, ASSET_IDS } from "../config/assets";
+import { ASSETS, ASSET_IDS, getAssetDisplayName, getVisibleAssetIds } from "../config/assets";
 import { APP_ROUTES } from "../constants/routes";
 import { getBalanceByNetwork } from "../services/blockchain/balance.service";
 import { getNativeAssetPricesUsd } from "../services/market/prices.service";
@@ -10,13 +10,7 @@ import { syncWalletActivity } from "../services/transactions/activity-sync.servi
 import { getTransactions } from "../services/transactions/transactions.service";
 import { getUserWallet } from "../services/user-wallets.service";
 
-const ASSET_ORDER = [
-  ASSET_IDS.solanaNative,
-  ASSET_IDS.solanaSplDemo,
-  ASSET_IDS.bnbNative,
-  ASSET_IDS.bnbBep20Demo,
-  ASSET_IDS.bitcoinNative,
-];
+const ASSET_ORDER = getVisibleAssetIds();
 
 const ASSET_COLORS = {
   [ASSET_IDS.solanaNative]: "#14f195",
@@ -48,20 +42,17 @@ function formatBalance(value, fallback = "Balance no disponible") {
 
 function buildAssetTile(assetId, balanceResult) {
   const asset = ASSETS[assetId];
-  const isTokenUnconfigured = asset.configured === false || balanceResult?.source === "missing-token-config";
-  const amount = isTokenUnconfigured
-    ? "No configurado"
-    : `${formatBalance(balanceResult?.balance)} ${asset.symbol}`;
+  const amount = `${formatBalance(balanceResult?.balance)} ${asset.symbol}`;
 
   return {
     id: asset.id,
-    name: asset.name,
+    name: getAssetDisplayName(asset),
     symbol: asset.symbol,
     network: asset.network === "solana" ? "Solana Devnet" : asset.network === "bnb" ? "BNB Testnet" : "Bitcoin Testnet",
     amount,
     color: ASSET_COLORS[assetId],
     configured: asset.configured,
-    canSend: !isTokenUnconfigured,
+    canSend: true,
     statusLabel: asset.assetType === "token" ? asset.tokenStandard : "Nativo",
   };
 }

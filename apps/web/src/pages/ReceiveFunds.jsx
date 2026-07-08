@@ -3,7 +3,7 @@ import AppShell from "../components/layout/AppShell";
 import WalletEmptyState from "../components/wallet/WalletEmptyState";
 import { APP_ROUTES } from "../constants/routes";
 import { NETWORKS, SUPPORTED_NETWORK_IDS } from "../constants/networks";
-import { ASSETS, ASSET_IDS } from "../config/assets";
+import { getAssetDisplayName, getAssetsForNetwork } from "../config/assets";
 import { getUserWallet } from "../services/user-wallets.service";
 import { isBitcoinMainnetAddress, isValidBitcoinTestnetAddress } from "../utils/address-validation";
 
@@ -33,6 +33,24 @@ function getAddressExplorerUrl(networkId, address) {
   }
 
   return "";
+}
+
+function getReceiveAddressNote(networkId, receivableAssets) {
+  const hasToken = receivableAssets.some((asset) => asset.assetType === "token");
+
+  if (networkId === "solana") {
+    return hasToken
+      ? "SOL y USDT-DEMO SPL se reciben en esta misma dirección Solana."
+      : "SOL se recibe en esta dirección Solana.";
+  }
+
+  if (networkId === "bnb") {
+    return hasToken
+      ? "tBNB y USDT-DEMO BEP20 se reciben en esta misma dirección BNB 0x."
+      : "tBNB se recibe en esta dirección BNB 0x.";
+  }
+
+  return "Bitcoin Testnet recibe solo BTC nativo.";
 }
 
 function ReceiveFunds({ user }) {
@@ -78,11 +96,8 @@ function ReceiveFunds({ user }) {
       ? "Dirección incompatible con Bitcoin Testnet"
       : currentAddress;
   const addressExplorerUrl = getAddressExplorerUrl(networkId, currentAddress);
-  const receivableAssets = networkId === "solana"
-    ? [ASSETS[ASSET_IDS.solanaNative], ASSETS[ASSET_IDS.solanaSplDemo]]
-    : networkId === "bnb"
-      ? [ASSETS[ASSET_IDS.bnbNative], ASSETS[ASSET_IDS.bnbBep20Demo]]
-      : [ASSETS[ASSET_IDS.bitcoinNative]];
+  const receivableAssets = getAssetsForNetwork(networkId);
+  const receiveAddressNote = getReceiveAddressNote(networkId, receivableAssets);
   const qrUrl = canUseCurrentAddress
     ? `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(currentAddress)}`
     : "";
@@ -152,10 +167,13 @@ function ReceiveFunds({ user }) {
               <p className="placeholder-copy">
                 Usa esta dirección solo para {currentNetwork.shortLabel}.
               </p>
+              <p className="placeholder-copy">
+                {receiveAddressNote}
+              </p>
               <div className="asset-status-row" style={{ marginTop: "14px" }}>
                 {receivableAssets.map((asset) => (
                   <span className="card-pill" key={asset.id}>
-                    {asset.symbol}{asset.assetType === "token" && !asset.configured ? " no configurado" : ""}
+                    {asset.assetType === "token" ? getAssetDisplayName(asset) : asset.symbol}
                   </span>
                 ))}
               </div>

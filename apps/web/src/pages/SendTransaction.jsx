@@ -5,7 +5,7 @@ import WalletEmptyState from "../components/wallet/WalletEmptyState";
 import { APP_ROUTES } from "../constants/routes";
 import { NETWORKS, SUPPORTED_NETWORK_IDS } from "../constants/networks";
 import { ADMIN_WALLETS } from "../config/admin-wallets";
-import { ASSET_IDS, getAssetById, getAssetsForNetwork, getDefaultAssetIdForNetwork } from "../config/assets";
+import { ASSET_IDS, getAssetById, getAssetDisplayName, getAssetsForNetwork, getDefaultAssetIdForNetwork } from "../config/assets";
 import { ECONOMIC_MODEL } from "../config/economic-model";
 import { getUserWallet } from "../services/user-wallets.service";
 import { getBalanceByNetwork } from "../services/blockchain/balance.service";
@@ -227,7 +227,7 @@ function SendTransaction({ user }) {
     }
 
     if (!currentAsset.configured) {
-      setFormError("Token demo no configurado.");
+      setFormError("Este token demo requiere configuración técnica.");
       return;
     }
 
@@ -314,7 +314,7 @@ function SendTransaction({ user }) {
         };
       } catch (error) {
         if (error?.message === "spl-token-not-configured") {
-          setFormError("Token demo no configurado.");
+          setFormError("Este token demo requiere configuración técnica.");
           return;
         }
 
@@ -398,7 +398,7 @@ function SendTransaction({ user }) {
         };
       } catch (error) {
         if (error?.message === "bep20-token-not-configured") {
-          setFormError("Token demo no configurado.");
+          setFormError("Este token demo requiere configuración técnica.");
           return;
         }
 
@@ -765,7 +765,7 @@ function SendTransaction({ user }) {
       } else if (error?.message === "solana-wallet-mismatch") {
         setFormError("El vault local no corresponde a la Wallet Solana de origen seleccionada.");
       } else if (error?.message === "bep20-token-not-configured" || error?.message === "spl-token-not-configured") {
-        setFormError("Token demo no configurado.");
+        setFormError("Este token demo requiere configuración técnica.");
       } else if (error?.message === "bep20-contract-not-found") {
         setFormError("El contrato BEP20 demo no existe en BNB Smart Chain Testnet.");
       } else if (error?.message === "insufficient-token-funds") {
@@ -931,7 +931,7 @@ function SendTransaction({ user }) {
                 >
                   {assetOptions.map((asset) => (
                     <option key={asset.id} value={asset.id}>
-                      {asset.symbol} - {asset.name}{asset.configured ? "" : " (Token demo no configurado)"}
+                      {asset.symbol} - {getAssetDisplayName(asset)}
                     </option>
                   ))}
                 </select>
@@ -979,7 +979,7 @@ function SendTransaction({ user }) {
                   Balance disponible: <strong>{typeof availableBalance === "number" ? `${availableBalance} ${currentAsset.symbol}` : "No disponible"}</strong>
                 </p>
                 <p className="placeholder-copy" style={{ marginTop: "8px" }}>
-                  Fuente del balance: <strong>{balanceSource === "missing-token-config" ? "Token demo no configurado" : networkId === "solana" ? (balanceSource === "blockchain-real" ? "Blockchain real (Solana Devnet)" : "Conexión temporalmente no disponible") : networkId === "bnb" ? (balanceSource === "blockchain-real" ? "Blockchain real (BNB Smart Chain Testnet)" : "Conexión temporalmente no disponible") : (balanceSource === "blockchain-real" ? "Blockchain real (Bitcoin Testnet)" : "Balance no disponible")}</strong>
+                  Fuente del balance: <strong>{balanceSource === "missing-token-config" ? "Token demo requiere configuración técnica" : networkId === "solana" ? (balanceSource === "blockchain-real" ? "Blockchain real (Solana Devnet)" : "Conexión temporalmente no disponible") : networkId === "bnb" ? (balanceSource === "blockchain-real" ? "Blockchain real (BNB Smart Chain Testnet)" : "Conexión temporalmente no disponible") : (balanceSource === "blockchain-real" ? "Blockchain real (Bitcoin Testnet)" : "Balance no disponible")}</strong>
                 </p>
                 {balanceError ? (
                   <p className="negative" style={{ marginTop: "8px" }}>

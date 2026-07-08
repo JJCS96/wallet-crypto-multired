@@ -168,7 +168,7 @@ async function syncSolanaSplDemoActivity(uid, solanaAddress) {
   const asset = ASSETS[ASSET_IDS.solanaSplDemo];
 
   if (!asset.configured || !isValidSolanaPublicKey(asset.tokenMint)) {
-    return skippedResult("Token demo no configurado, se omitió la sincronización SPL.");
+    return skippedResult("Token demo SPL requiere configuración técnica; se omitió su sincronización.");
   }
 
   if (!isValidSolanaPublicKey(solanaAddress)) {
@@ -434,7 +434,7 @@ async function syncBep20DemoActivity(uid, bnbAddress) {
   const asset = ASSETS[ASSET_IDS.bnbBep20Demo];
 
   if (!asset.configured) {
-    return skippedResult("Token demo no configurado, se omitió la sincronización BEP20.");
+    return skippedResult("Token demo BEP20 requiere configuración técnica; se omitió su sincronización.");
   }
 
   if (!BNB_TESTNET_RPC_URL) {

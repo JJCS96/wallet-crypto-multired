@@ -63,8 +63,8 @@ function DashboardHome({
       : formatUsd(typeof estimatedTotalUsd === "number" ? estimatedTotalUsd : 0);
 
   function getAssetState(asset) {
-    if (asset.configured === false || asset.amount === "Token demo no configurado" || asset.amount === "No configurado") {
-      return "No configurado";
+    if (asset.configured === false || asset.amount === "No configurado") {
+      return "No disponible";
     }
 
     if (asset.amount === "Balance no disponible" || asset.amount === "No disponible") {
@@ -75,7 +75,7 @@ function DashboardHome({
   }
 
   function getAssetDescription(asset) {
-    if (asset.amount === "Token demo no configurado" || asset.amount === "No configurado") {
+    if (asset.amount === "No configurado") {
       return asset.name === "SPL Demo Token"
         ? "Configura el mint en .env.local."
         : "Configura el contrato en .env.local.";
