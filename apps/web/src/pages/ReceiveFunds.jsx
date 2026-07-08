@@ -102,7 +102,7 @@ function ReceiveFunds({ user }) {
       user={user}
       title="Recibir fondos"
       kicker="Recibir"
-      description="Selecciona una red, comparte tu dirección pública y utiliza el código QR correspondiente a tu Wallet." 
+      description="Selecciona una red y comparte tu dirección pública." 
     >
       {loading ? (
         <section className="placeholder-page">
@@ -147,21 +147,10 @@ function ReceiveFunds({ user }) {
               </div>
 
               <p className="placeholder-copy">
-                Red seleccionada: <strong>{currentNetwork.label}</strong>
+                Red: <strong>{currentNetwork.label}</strong>
               </p>
-              {networkId === "bitcoin" ? (
-                <p className="placeholder-copy">
-                  Bitcoin opera en Testnet para esta demo. La dirección debe iniciar con <strong>tb1</strong>.
-                </p>
-              ) : null}
-              {networkId === "bnb" ? (
-                <p className="placeholder-copy">
-                  BNB opera en BNB Smart Chain Testnet para esta demo. La dirección debe iniciar con <strong>0x</strong> y recibe <strong>tBNB</strong>.
-                </p>
-              ) : null}
               <p className="placeholder-copy">
-                Envía solo la criptomoneda correspondiente a esta red. Si eliges {currentNetwork.label},
-                comparte únicamente esta dirección para esa red.
+                Usa esta dirección solo para {currentNetwork.shortLabel}.
               </p>
               <div className="asset-status-row" style={{ marginTop: "14px" }}>
                 {receivableAssets.map((asset) => (
@@ -208,7 +197,7 @@ function ReceiveFunds({ user }) {
             </div>
             <div className="auth-error" style={{ marginTop: "18px", marginBottom: 0 }}>
               Envía únicamente {currentNetwork.shortLabel} a esta dirección. Usar una red incorrecta
-              puede provocar pérdida de fondos cuando la integración blockchain real esté disponible.
+              puede provocar pérdida de fondos.
             </div>
           </article>
         </section>

@@ -22,7 +22,7 @@ function Splash({ isCheckingSession = false }) {
         <h1 className="auth-title wallet-auth-title">NovaWallet</h1>
 
         <p className="auth-subtitle wallet-auth-subtitle">
-          Para empezar, crea una nueva billetera o importa una existente.
+          Gestiona tus activos digitales en redes de prueba de forma segura.
         </p>
 
         {isCheckingSession ? (
@@ -40,6 +40,7 @@ function Splash({ isCheckingSession = false }) {
             <Link className="auth-button-secondary auth-button-link wallet-secondary-btn" to="/login">
               Ya tengo una billetera
             </Link>
+            <p className="wallet-auth-note">Tu frase de recuperación nunca se guarda en Firebase.</p>
           </div>
         )}
       </section>

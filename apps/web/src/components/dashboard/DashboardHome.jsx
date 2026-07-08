@@ -63,7 +63,7 @@ function DashboardHome({
       : formatUsd(typeof estimatedTotalUsd === "number" ? estimatedTotalUsd : 0);
 
   function getAssetState(asset) {
-    if (asset.configured === false || asset.amount === "Token demo no configurado") {
+    if (asset.configured === false || asset.amount === "Token demo no configurado" || asset.amount === "No configurado") {
       return "No configurado";
     }
 
@@ -75,10 +75,10 @@ function DashboardHome({
   }
 
   function getAssetDescription(asset) {
-    if (asset.amount === "Token demo no configurado") {
+    if (asset.amount === "Token demo no configurado" || asset.amount === "No configurado") {
       return asset.name === "SPL Demo Token"
-        ? "Configura el mint en .env.local para habilitar este token."
-        : "Configura el contrato en .env.local para habilitar este token.";
+        ? "Configura el mint en .env.local."
+        : "Configura el contrato en .env.local.";
     }
 
     if (asset.symbol === "SOL") {
@@ -106,7 +106,6 @@ function DashboardHome({
               <p className="card-label">Balance total</p>
               <p className="dashboard-note">Valor estimado de activos en redes de prueba.</p>
             </div>
-            <span className="card-pill card-pill--live">Demo informativo</span>
           </div>
 
           <div className={`balance ${estimatedTotalUsdError ? "balance--unavailable" : ""}`}>
@@ -124,14 +123,14 @@ function DashboardHome({
 
           {estimatedTotalUsdError ? <p className="negative">{estimatedTotalUsdError}</p> : null}
           <p className="dashboard-note">Activos en redes de prueba, sin valor comercial real.</p>
-          <p className="dashboard-note">Hola, {displayName}. SPL Demo y BEP20 Demo no se incluyen en el total USD.</p>
+          <p className="dashboard-note">Hola, {displayName}. Los tokens demo no se incluyen en el total USD.</p>
         </article>
       </section>
 
       <section className="dashboard-card assets-network-card nova-card--interactive">
         <div className="card-header-row">
           <h2>Mis activos</h2>
-          <span className="card-pill">Activos en redes de prueba</span>
+          <span className="card-pill card-pill--muted">Redes de prueba</span>
         </div>
 
         <div className="asset-card-grid">
@@ -165,9 +164,13 @@ function DashboardHome({
               <p className="dashboard-note asset-note">{getAssetDescription(asset)}</p>
 
               <div className="asset-action-row">
-                <Link className={`auth-button-secondary auth-button-link ${isUnavailable ? "asset-action-muted" : ""}`} to={APP_ROUTES.receiveFunds}>
-                  Recibir
-                </Link>
+                {isUnavailable ? (
+                  <span className="asset-action-disabled">Recibir</span>
+                ) : (
+                  <Link className="auth-button-secondary auth-button-link" to={APP_ROUTES.receiveFunds}>
+                    Recibir
+                  </Link>
+                )}
                 {asset.canSend && !isUnavailable ? (
                   <Link className="auth-button auth-button-link" to={APP_ROUTES.sendTransaction}>
                     Enviar
@@ -220,7 +223,7 @@ function DashboardHome({
           <div className="empty-activity-state">
             <span aria-hidden="true">TX</span>
             <strong>Aún no tienes movimientos</strong>
-            <p>Cuando envíes o recibas fondos, verás tu actividad aquí.</p>
+            <p>Envía, recibe o actualiza actividad para ver tus transacciones.</p>
           </div>
         )}
       </section>

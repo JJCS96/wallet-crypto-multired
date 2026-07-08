@@ -1,7 +1,5 @@
 import { useEffect, useState } from "react";
 import AppShell from "../components/layout/AppShell";
-import WalletEmptyState from "../components/wallet/WalletEmptyState";
-import { APP_ROUTES } from "../constants/routes";
 import { getUserWallet } from "../services/user-wallets.service";
 import { getTransactions } from "../services/transactions/transactions.service";
 import { syncWalletActivity } from "../services/transactions/activity-sync.service";
@@ -70,22 +68,6 @@ function formatShortHash(value) {
   return `${value.slice(0, 10)}...${value.slice(-8)}`;
 }
 
-function getAppFeeModeLabel(mode) {
-  if (mode === "on-chain") {
-    return "On-chain";
-  }
-
-  if (mode === "documented") {
-    return "Documental, no cobrada on-chain";
-  }
-
-  if (mode === "pending") {
-    return "Pendiente, no cobrada on-chain";
-  }
-
-  return "Documental";
-}
-
 function TransactionHistory({ user }) {
   const [transactions, setTransactions] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -110,6 +92,7 @@ function TransactionHistory({ user }) {
 
         if (isMounted) {
           setTransactions(result);
+          setLoading(false);
         }
 
         if (wallet) {
@@ -152,20 +135,13 @@ function TransactionHistory({ user }) {
       user={user}
       title="Historial"
       kicker="Actividad"
-      description="Actividad reciente de tu Wallet con transacciones reales en redes testnet y transacciones simuladas."
+      description="Transacciones reales en testnet y movimientos registrados."
     >
       <section className="placeholder-page">
         <article className="placeholder-card placeholder-card--accent">
           <p className="placeholder-kicker">Seguimiento</p>
           <h2 className="placeholder-title">Actividad registrada</h2>
-             <p className="placeholder-copy">
-               Aquí se listan transacciones reales en Solana Devnet, BNB Smart Chain Testnet y Bitcoin Testnet,
-                además de transacciones simuladas donde aplique. Nunca se muestran frases semilla
-               ni claves privadas.
-            </p>
-            <span className="placeholder-badge" style={{ marginTop: "18px" }}>
-              Rentabilidad preparada con comisión NovaWallet del 1%
-            </span>
+            <p className="placeholder-copy">Movimientos enviados, recibidos y sincronizados.</p>
             <div className="placeholder-actions" style={{ marginTop: "18px" }}>
               <button className="auth-button-secondary" type="button" onClick={handleRefreshActivity} disabled={loading || syncing}>
                 {syncing ? "Actualizando actividad..." : "Actualizar actividad"}
@@ -181,18 +157,11 @@ function TransactionHistory({ user }) {
           </article>
         ) : transactions.length === 0 ? (
           <article className="placeholder-card">
-            <WalletEmptyState
-              title="Aún no tienes movimientos registrados"
-              description="Cuando envíes fondos o sincronices actividad recibida desde blockchain, tus movimientos aparecerán aquí."
-              badge="Historial vacío"
-              steps={[
-                "Usa Enviar para registrar operaciones salientes.",
-                "Usa Actualizar actividad para consultar movimientos recibidos.",
-                "La actividad sincronizada se guarda como datos públicos en Firestore.",
-              ]}
-              primaryAction={{ to: APP_ROUTES.sendTransaction, label: "Ir a enviar" }}
-              secondaryAction={{ to: APP_ROUTES.dashboard, label: "Volver al dashboard" }}
-            />
+            <div className="empty-activity-state">
+              <span aria-hidden="true">TX</span>
+              <strong>Aún no tienes movimientos</strong>
+              <p>Envía, recibe o actualiza actividad para ver tus transacciones.</p>
+            </div>
           </article>
         ) : (
           <div className="history-list">
@@ -211,20 +180,20 @@ function TransactionHistory({ user }) {
 
                 <div className="history-card__grid">
                   <div>
-                    <strong>Dirección</strong>
-                    <span>{getDirectionLabel(transaction.direction)}</span>
+                    <strong>Red</strong>
+                    <span>{transaction.network}</span>
                   </div>
                   <div>
-                    <strong>Fuente</strong>
-                    <span>{transaction.source === "blockchain-sync" ? "Blockchain sync" : "NovaWallet"}</span>
+                    <strong>Activo</strong>
+                    <span>{getTransactionSymbol(transaction)}</span>
                   </div>
                   <div>
-                    <strong>Origen</strong>
-                    <span>{transaction.fromAddress}</span>
+                    <strong>Monto</strong>
+                    <span>{formatNumber(transaction.amount)} {getTransactionSymbol(transaction)}</span>
                   </div>
                   <div>
-                    <strong>Destino</strong>
-                    <span>{transaction.toAddress}</span>
+                    <strong>Hash</strong>
+                    <span>{formatShortHash(transaction.txHash)}</span>
                   </div>
                   <div>
                     <strong>Estado</strong>
@@ -233,70 +202,6 @@ function TransactionHistory({ user }) {
                   <div>
                     <strong>Fecha</strong>
                     <span>{formatDate(transaction.createdAt)}</span>
-                  </div>
-                  <div>
-                    <strong>Comisión red</strong>
-                    <span>{formatNumber(transaction.networkFee)}</span>
-                  </div>
-                  {transaction.tokenMint ? (
-                    <div>
-                      <strong>Mint token</strong>
-                      <span>{transaction.tokenMint}</span>
-                    </div>
-                  ) : null}
-                  {transaction.tokenAddress ? (
-                    <div>
-                      <strong>Contrato/Cuenta token</strong>
-                      <span>{transaction.tokenAddress}</span>
-                    </div>
-                  ) : null}
-                  <div>
-                    <strong>Comisión app</strong>
-                    <span>{formatNumber(transaction.appFee)} ({transaction.appFeeRate ? `${transaction.appFeeRate * 100}%` : "1%"})</span>
-                  </div>
-                  <div>
-                    <strong>Modo comisión app</strong>
-                    <span>{getAppFeeModeLabel(transaction.appFeeMode)}</span>
-                  </div>
-                  <div>
-                    <strong>Total debitado</strong>
-                    <span>{formatNumber(transaction.totalDebit)}</span>
-                  </div>
-                  <div>
-                    <strong>Confirmación</strong>
-                    <span>{transaction.confirmationStatus || "No disponible"}</span>
-                  </div>
-                  {transaction.chainId ? (
-                    <div>
-                      <strong>Chain ID</strong>
-                      <span>{transaction.chainId}</span>
-                    </div>
-                  ) : null}
-                  {transaction.gasUsed ? (
-                    <div>
-                      <strong>Gas usado</strong>
-                      <span>{transaction.gasUsed}</span>
-                    </div>
-                  ) : null}
-                  {transaction.gasPrice ? (
-                    <div>
-                      <strong>Gas price</strong>
-                      <span>{transaction.gasPrice}</span>
-                    </div>
-                  ) : null}
-                  {transaction.feeRate ? (
-                    <div>
-                      <strong>Fee rate</strong>
-                      <span>{transaction.feeRate} sat/vB</span>
-                    </div>
-                  ) : null}
-                  <div>
-                    <strong>Wallet administrativa</strong>
-                    <span>{transaction.adminWallet}</span>
-                  </div>
-                  <div>
-                    <strong>Hash</strong>
-                    <span>{formatShortHash(transaction.txHash)}</span>
                   </div>
                   {transaction.explorerUrl ? (
                     <div>

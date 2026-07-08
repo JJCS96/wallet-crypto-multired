@@ -788,7 +788,7 @@ function SendTransaction({ user }) {
       user={user}
       title="Enviar"
       kicker="Operación de wallet"
-      description="Prepara un envío desde tu Wallet. Solana Devnet, BNB Smart Chain Testnet y Bitcoin Testnet usan firma local, balance real disponible y explorers de red."
+      description="Selecciona red, activo, destino y monto."
     >
       {walletLoading ? (
         <section className="placeholder-page">
@@ -881,10 +881,7 @@ function SendTransaction({ user }) {
             <p className="placeholder-kicker">Enviar</p>
             <h2 className="placeholder-title">Enviar desde tu wallet</h2>
             <p className="placeholder-copy">
-              Selecciona la red, revisa tu Wallet origen y prepara el envío. Si eliges Solana podrás
-              completar un envío real en Solana Devnet. Si eliges BNB podrás enviar tBNB real en
-              BNB Smart Chain Testnet. Si eliges Bitcoin podrás enviar BTC Testnet real cuando existan UTXOs suficientes.
-              Los tokens demo solo se habilitan cuando su contrato o mint está configurado.
+              Revisa los datos y confirma con tu contraseña local cuando el resumen esté listo.
             </p>
             <span className="placeholder-badge" style={{ marginTop: "18px" }}>
               Comisión NovaWallet: {ECONOMIC_MODEL.appCommissionPercentLabel}
@@ -977,7 +974,7 @@ function SendTransaction({ user }) {
                 />
               </div>
 
-              <article className="placeholder-card transaction-fee-card">
+              <div className="transaction-fee-card">
                 <p className="placeholder-copy">
                   Balance disponible: <strong>{typeof availableBalance === "number" ? `${availableBalance} ${currentAsset.symbol}` : "No disponible"}</strong>
                 </p>
@@ -998,35 +995,17 @@ function SendTransaction({ user }) {
                 <p className="placeholder-copy" style={{ marginTop: "8px" }}>
                   Total estimado a debitar: <strong>{draftTotalDebit.toFixed(6)} {currentAsset.symbol}</strong>
                 </p>
-                <p className="placeholder-copy" style={{ marginTop: "8px" }}>
-                  Wallet administrativa de la comisión: <strong>{networkId === "bitcoin" ? "No aplica en Bitcoin Testnet" : ADMIN_WALLETS[networkId]}</strong>
-                </p>
                 {networkId === "bitcoin" ? (
                   <p className="dashboard-note" style={{ marginTop: "8px" }}>
-                    Bitcoin usa UTXOs; la comisión puede variar según la red. NovaWallet calculará UTXOs y fee reales al revisar el resumen.
+                    Bitcoin usa UTXOs; NovaWallet calculará fee real al revisar el resumen.
                   </p>
                 ) : null}
-              </article>
+              </div>
 
               <button className="auth-button" type="submit">
-                Revisar resumen antes de enviar
+                Continuar
               </button>
             </form>
-          </article>
-
-          <article className="placeholder-card">
-            <WalletEmptyState
-              title="Validaciones activas"
-              description="El formulario ya valida dirección, monto, red seleccionada y balance suficiente antes de permitir la confirmación."
-              badge="Flujo validado"
-              steps={[
-                "Se valida formato de dirección según la red.",
-                "La comisión NovaWallet del 1% se asocia a una Wallet administrativa por red.",
-                "Bitcoin Testnet valida UTXOs suficientes antes de habilitar la firma local.",
-              ]}
-              primaryAction={{ to: APP_ROUTES.transactionHistory, label: "Ver historial" }}
-              secondaryAction={{ to: APP_ROUTES.dashboard, label: "Volver al dashboard" }}
-            />
           </article>
         </section>
       )}

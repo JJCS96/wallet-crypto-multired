@@ -303,14 +303,14 @@ function WalletHome({ user }) {
       name: ASSETS[ASSET_IDS.solanaSplDemo].symbol,
       network: "Solana Devnet token demo",
       balance: !ASSETS[ASSET_IDS.solanaSplDemo].configured
-        ? "Token demo no configurado"
+        ? "No configurado"
         : splBalanceLoading
           ? "Consultando..."
           : typeof splBalance === "number"
             ? `${formatBalance(splBalance)} ${ASSETS[ASSET_IDS.solanaSplDemo].symbol}`
             : "Balance no disponible",
       badge: "SPL Demo",
-      note: splBalanceError || "Recepción por dirección Solana; envío demo si hay ATA y saldo.",
+      note: splBalanceError || "Token demo SPL.",
       configured: ASSETS[ASSET_IDS.solanaSplDemo].configured,
     },
     {
@@ -329,14 +329,14 @@ function WalletHome({ user }) {
       name: ASSETS[ASSET_IDS.bnbBep20Demo].symbol,
       network: "BNB Testnet token demo",
       balance: !ASSETS[ASSET_IDS.bnbBep20Demo].configured
-        ? "Token demo no configurado"
+        ? "No configurado"
         : bep20BalanceLoading
           ? "Consultando..."
           : typeof bep20Balance === "number"
             ? `${formatBalance(bep20Balance)} ${ASSETS[ASSET_IDS.bnbBep20Demo].symbol}`
             : "Balance no disponible",
       badge: "BEP20 Demo",
-      note: bep20BalanceError || "Recepción por dirección BNB 0x; envío demo con gas tBNB.",
+      note: bep20BalanceError || "Token demo BEP20.",
       configured: ASSETS[ASSET_IDS.bnbBep20Demo].configured,
     },
     {
@@ -360,7 +360,7 @@ function WalletHome({ user }) {
   const unconfiguredAssetCount = assetStatuses.filter((asset) => asset.configured === false).length;
 
   function getAssetState(asset) {
-    if (asset.configured === false || asset.balance === "Token demo no configurado") {
+    if (asset.configured === false || asset.balance === "Token demo no configurado" || asset.balance === "No configurado") {
       return "No configurado";
     }
 
@@ -372,10 +372,10 @@ function WalletHome({ user }) {
   }
 
   function getAssetDescription(asset) {
-    if (asset.balance === "Token demo no configurado") {
+    if (asset.balance === "Token demo no configurado" || asset.balance === "No configurado") {
       return asset.badge === "SPL Demo"
-        ? "Configura el mint en .env.local para habilitar este token."
-        : "Configura el contrato en .env.local para habilitar este token.";
+        ? "Configura el mint en .env.local."
+        : "Configura el contrato en .env.local.";
     }
 
     if (asset.name === "SOL") {
@@ -398,7 +398,7 @@ function WalletHome({ user }) {
       user={user}
       title="Mi Wallet"
       kicker="Vista principal"
-      description="Vista principal de tu Wallet con redes de prueba, direcciones públicas y estado real/parcial de cada integración."
+      description="Direcciones, activos y estado básico de tu wallet."
     >
       {loading ? (
         <section className="placeholder-page">
@@ -439,10 +439,10 @@ function WalletHome({ user }) {
                 Tokens no configurados: <strong>{unconfiguredAssetCount}</strong>
               </p>
               <p className="placeholder-copy">
-                Redes disponibles: <strong>Solana Devnet, BNB Testnet y Bitcoin Testnet</strong>
+                Redes: <strong>Solana, BNB Testnet y Bitcoin Testnet</strong>
               </p>
               <p className="placeholder-copy">
-                Bitcoin Testnet: <strong>{hasLegacyBitcoinMainnetAddress ? "Dirección mainnet antigua detectada; requiere restaurar para obtener tb1." : "Dirección tb1 disponible para testnet."}</strong>
+                Bitcoin: <strong>{hasLegacyBitcoinMainnetAddress ? "Requiere restaurar para tb1." : "tb1 testnet disponible."}</strong>
               </p>
               <p className="placeholder-copy">
                 Entorno: <strong>redes de prueba, sin valor comercial real</strong>
@@ -491,7 +491,6 @@ function WalletHome({ user }) {
           <article className="placeholder-card assets-network-card nova-card--interactive">
             <div className="card-header-row">
               <h2>Activos multired</h2>
-              <span className="card-pill">Activos en redes de prueba</span>
             </div>
 
             <div className="asset-card-grid">
@@ -517,9 +516,13 @@ function WalletHome({ user }) {
                   <p className="asset-amount">{asset.balance}</p>
                   <p className="dashboard-note asset-note">{getAssetDescription(asset)}</p>
                   <div className="asset-action-row">
-                    <Link className={`auth-button-secondary auth-button-link ${isUnavailable ? "asset-action-muted" : ""}`} to={APP_ROUTES.receiveFunds}>
-                      Recibir
-                    </Link>
+                    {isUnavailable ? (
+                      <span className="asset-action-disabled">Recibir</span>
+                    ) : (
+                      <Link className="auth-button-secondary auth-button-link" to={APP_ROUTES.receiveFunds}>
+                        Recibir
+                      </Link>
+                    )}
                     {isUnavailable ? (
                       <span className="asset-action-disabled">Enviar</span>
                     ) : (
