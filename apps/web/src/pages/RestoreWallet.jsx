@@ -132,7 +132,7 @@ function RestoreWallet({ user }) {
   return (
     <AppShell
       user={user}
-      title="Importar una billetera"
+      title="Restaurar Wallet"
       kicker="Frase de recuperación"
       description="Ingresa tus 12 palabras en el mismo orden para restaurar tus direcciones."
     >
@@ -200,7 +200,7 @@ function RestoreWallet({ user }) {
           <AddressListCard wallet={previewWallet} title="Direcciones públicas restauradas" />
         </section>
       ) : (
-        <section className="placeholder-page wallet-onboarding-page wallet-onboarding-page--wide">
+        <section className="placeholder-page wallet-onboarding-page wallet-onboarding-page--wide restore-wallet-page">
           <article className="placeholder-card placeholder-card--accent wallet-auth-card wallet-onboarding-card">
             <div className="wallet-auth-topbar">
               <button className="wallet-back-button" type="button" onClick={() => navigate(APP_ROUTES.dashboard)} aria-label="Volver al dashboard">

@@ -7,6 +7,7 @@ import { APP_ROUTES } from "../constants/routes";
 import { ASSETS, ASSET_IDS, getAssetDisplayName } from "../config/assets";
 import { getUserWallet } from "../services/user-wallets.service";
 import { getBalanceByNetwork } from "../services/blockchain/balance.service";
+import { getNativeAssetPricesUsd } from "../services/market/prices.service";
 import { syncWalletActivity } from "../services/transactions/activity-sync.service";
 import { isBitcoinMainnetAddress, isValidBitcoinTestnetAddress } from "../utils/address-validation";
 
@@ -28,6 +29,15 @@ function formatBalance(value) {
   }
 
   return value.toFixed(6).replace(/0+$/, "").replace(/\.$/, "");
+}
+
+function formatUsd(value) {
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(value);
 }
 
 function WalletHome({ user }) {
@@ -52,6 +62,9 @@ function WalletHome({ user }) {
   const [activitySyncError, setActivitySyncError] = useState("");
   const [activitySyncNotice, setActivitySyncNotice] = useState("");
   const [refreshTick, setRefreshTick] = useState(0);
+  const [estimatedTotalUsd, setEstimatedTotalUsd] = useState(null);
+  const [estimatedTotalUsdLoading, setEstimatedTotalUsdLoading] = useState(false);
+  const [estimatedTotalUsdError, setEstimatedTotalUsdError] = useState("");
   const hasLegacyBitcoinMainnetAddress = isBitcoinMainnetAddress(wallet?.bitcoinAddress || "");
   const hasInvalidBitcoinTestnetAddress = Boolean(wallet?.bitcoinAddress) && !isValidBitcoinTestnetAddress(wallet.bitcoinAddress);
 
@@ -247,6 +260,44 @@ function WalletHome({ user }) {
   useEffect(() => {
     let isMounted = true;
 
+    async function loadEstimatedTotal() {
+      setEstimatedTotalUsdLoading(true);
+      setEstimatedTotalUsdError("");
+
+      try {
+        const prices = await getNativeAssetPricesUsd();
+        const total =
+          (typeof solanaBalance === "number" ? solanaBalance : 0) * prices.solana
+          + (typeof bnbBalance === "number" ? bnbBalance : 0) * prices.bnb
+          + (typeof bitcoinBalance === "number" ? bitcoinBalance : 0) * prices.bitcoin;
+
+        if (isMounted) {
+          setEstimatedTotalUsd(total);
+        }
+      } catch {
+        if (isMounted) {
+          setEstimatedTotalUsdError("Valor estimado no disponible");
+          setEstimatedTotalUsd(null);
+        }
+      } finally {
+        if (isMounted) {
+          setEstimatedTotalUsdLoading(false);
+        }
+      }
+    }
+
+    if (wallet) {
+      loadEstimatedTotal();
+    }
+
+    return () => {
+      isMounted = false;
+    };
+  }, [bitcoinBalance, bnbBalance, solanaBalance, wallet]);
+
+  useEffect(() => {
+    let isMounted = true;
+
     async function syncActivity() {
       if (!wallet) {
         return;
@@ -358,6 +409,28 @@ function WalletHome({ user }) {
   const assetStatuses = allAssetStatuses.filter((asset) => asset.configured !== false);
   const supportedAssetCount = assetStatuses.length;
   const activeAssetCount = assetStatuses.filter((asset) => asset.configured !== false).length;
+  const nativeWalletSummary = [
+    {
+      label: "SOL",
+      value: solanaBalanceLoading
+        ? "Consultando..."
+        : `${formatBalance(solanaBalance)} SOL`,
+    },
+    {
+      label: "tBNB",
+      value: bnbBalanceLoading
+        ? "Consultando..."
+        : `${formatBalance(bnbBalance)} tBNB`,
+    },
+    {
+      label: "BTC",
+      value: bitcoinBalanceLoading
+        ? "Consultando..."
+        : typeof bitcoinBalance === "number"
+          ? `${bitcoinBalance.toFixed(8).replace(/0+$/, "").replace(/\.$/, "")} BTC`
+          : "-- BTC",
+    },
+  ];
 
   function getAssetState(asset) {
     if (asset.configured === false || asset.balance === "No configurado" || asset.balance === "Requiere configuración") {
@@ -425,6 +498,49 @@ function WalletHome({ user }) {
         </section>
       ) : (
         <section className="placeholder-page">
+          <article className="dashboard-card wallet-balance-card wallet-home-balance-card">
+            <span className="wallet-balance-card__mesh" aria-hidden="true" />
+            <div className="dashboard-balance-layout">
+              <div>
+                <p className="card-label">Balance total estimado</p>
+                <div className={`balance ${estimatedTotalUsdError ? "balance--unavailable" : ""}`}>
+                  {estimatedTotalUsdLoading
+                    ? "Calculando..."
+                    : estimatedTotalUsdError
+                      ? "Valor estimado no disponible"
+                      : formatUsd(typeof estimatedTotalUsd === "number" ? estimatedTotalUsd : 0)}
+                  {!estimatedTotalUsdError && !estimatedTotalUsdLoading ? <span>USD</span> : null}
+                </div>
+                <p className="dashboard-note">
+                  Valor estimado en redes de prueba. No incluye tokens demo ni valor comercial real.
+                </p>
+              </div>
+
+              <div className="balance-hero-mark" aria-hidden="true">
+                <span>NW</span>
+              </div>
+            </div>
+
+            <div className="native-balance-list native-balance-list--compact">
+              {nativeWalletSummary.map((asset) => (
+                <div className="native-balance-row" key={asset.label}>
+                  <span>{asset.label}</span>
+                  <strong>{asset.value}</strong>
+                </div>
+              ))}
+            </div>
+
+            <div className="wallet-home-status-row">
+              <span>Activos disponibles: {supportedAssetCount}</span>
+              <button className="inline-link-text" type="button" onClick={handleRefreshActivity} disabled={activitySyncing}>
+                {activitySyncing ? "Actualizando..." : "Actualizar actividad"}
+              </button>
+            </div>
+            {activitySyncNotice && !activitySyncing ? <p className="dashboard-note">{activitySyncNotice}</p> : null}
+            {activitySyncError ? <p className="negative" style={{ marginTop: "12px" }}>{activitySyncError}</p> : null}
+            {solanaBalanceError ? <p className="negative" style={{ marginTop: "12px" }}>{solanaBalanceError}</p> : null}
+          </article>
+
           <div className="placeholder-grid wallet-summary-grid">
             <article className="placeholder-card placeholder-card--accent">
               <p className="placeholder-kicker">Resumen multired</p>
@@ -487,7 +603,7 @@ function WalletHome({ user }) {
 
           <article className="placeholder-card assets-network-card nova-card--interactive">
             <div className="card-header-row">
-              <h2>Activos multired</h2>
+              <h2>Activos disponibles</h2>
             </div>
 
             <div className="asset-card-grid">

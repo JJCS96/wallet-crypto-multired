@@ -1,6 +1,7 @@
 import { NavLink, useNavigate } from "react-router-dom";
 import BrandMark from "../BrandMark";
 import { logout } from "../../services/auth.service";
+import { clearVaultSession } from "../../services/security/encrypted-vault.service";
 import { clearAllPendingWalletFlows } from "../../services/security/local-wallet-storage.service";
 import {
   APP_ONBOARDING_ROUTES,
@@ -48,10 +49,11 @@ function AppShell({
   async function handleLogout() {
     try {
       clearAllPendingWalletFlows();
+      clearVaultSession();
       await logout();
-      navigate(APP_ROUTES.login);
+      navigate(APP_ROUTES.login, { replace: true });
     } catch (error) {
-      console.error("Error al cerrar sesión:", error);
+      console.error("Error al cerrar sesion:", error?.message || "logout-failed");
     }
   }
 

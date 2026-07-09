@@ -17,7 +17,7 @@ const SECURITY_NOTICE_CONTENT = {
   "sensitive-data": {
     className: "auth-error",
     message:
-      "Nunca compartas tu frase semilla, clave privada o datos sensibles. La plataforma no almacena esta información.",
+      "Nunca compartas tu frase semilla, clave privada o datos sensibles. NovaWallet solo guarda direcciones publicas en Firestore y el vault local permanece cifrado.",
   },
 };
 

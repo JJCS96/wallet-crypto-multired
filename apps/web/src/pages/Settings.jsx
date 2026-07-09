@@ -9,7 +9,7 @@ import { SOLANA_RPC_URL } from "../config/solana";
 import { logout } from "../services/auth.service";
 import { getUserWallet } from "../services/user-wallets.service";
 import { clearAllPendingWalletFlows } from "../services/security/local-wallet-storage.service";
-import { deleteEncryptedVault, isVaultAvailable } from "../services/security/encrypted-vault.service";
+import { clearVaultSession, deleteEncryptedVault, isVaultAvailable } from "../services/security/encrypted-vault.service";
 
 function getStatusClass(status) {
   if (status === "Listo" || status === "Lista" || status === "Activo" || status === "Configurado") {
@@ -64,8 +64,9 @@ function Settings({ user }) {
 
   async function handleLogout() {
     clearAllPendingWalletFlows();
+    clearVaultSession();
     await logout();
-    navigate(APP_ROUTES.login);
+    navigate(APP_ROUTES.login, { replace: true });
   }
 
   async function handleDeleteVault() {
@@ -176,6 +177,7 @@ function Settings({ user }) {
                   <p className="placeholder-copy">Wallet pública disponible y asociada a tu cuenta.</p>
                   <p className="placeholder-copy">Recuperación: <strong>solo con frase semilla</strong></p>
                   <p className="placeholder-copy">Vault local: <strong>{vaultAvailable ? "Activo en este dispositivo" : "No configurado"}</strong></p>
+                  <p className="placeholder-copy">Firebase almacena unicamente informacion publica o no sensible.</p>
                 </>
               ) : (
                 <WalletEmptyState

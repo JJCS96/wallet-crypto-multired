@@ -2,7 +2,6 @@ import { getAssociatedTokenAddress } from "@solana/spl-token";
 import { LAMPORTS_PER_SOL, PublicKey } from "@solana/web3.js";
 import { formatEther, formatUnits, id, Interface, zeroPadValue } from "ethers";
 import { ASSETS, ASSET_IDS } from "../../config/assets";
-import { NETWORKS } from "../../constants/networks";
 import { isValidBitcoinTestnetAddress } from "../../utils/address-validation";
 import { getSolanaConnection, buildSolanaExplorerUrl, isValidSolanaPublicKey } from "../blockchain/solana-rpc.service";
 import { buildBnbExplorerUrl, BNB_TESTNET_CHAIN_ID, BNB_TESTNET_RPC_URL, getBnbProvider, assertBnbTestnetProvider, weiToBnbNumber } from "../blockchain/bnb.service";
@@ -14,6 +13,7 @@ const BNB_BLOCK_SCAN_LOOKBACK = 120;
 const BEP20_EVENT_LOOKBACK = 5000;
 const SATOSHIS_PER_BTC = 100_000_000;
 const BITCOIN_TESTNET_API_URL = (import.meta.env.VITE_BITCOIN_TESTNET_API_URL || "https://mempool.space/testnet/api").replace(/\/$/, "");
+const BITCOIN_TESTNET_EXPLORER_TX_URL = "https://blockstream.info/testnet/tx/";
 const BSCSCAN_TESTNET_API_KEY = import.meta.env.VITE_BSCSCAN_TESTNET_API_KEY || "";
 const BSCSCAN_TESTNET_API_URL = "https://api-testnet.bscscan.com/api";
 
@@ -69,14 +69,123 @@ async function runActivityJob(job) {
 }
 
 function buildBitcoinTxExplorerUrl(txid) {
-  return `${NETWORKS.bitcoin.explorerTxBaseUrl}${txid}`;
+  return `${BITCOIN_TESTNET_EXPLORER_TX_URL}${txid}`;
+}
+
+function isValidBnbTestnetAddress(address) {
+  return /^0x[a-fA-F0-9]{40}$/.test(String(address || "").trim());
+}
+
+function getSolanaAccountKeyString(accountKey) {
+  return accountKey?.pubkey?.toBase58?.()
+    || accountKey?.pubkey?.toString?.()
+    || accountKey?.toBase58?.()
+    || accountKey?.toString?.()
+    || "";
+}
+
+function getSolanaInstructionParties(parsedTransaction, solanaAddress, direction) {
+  let fromAddress = direction === "outgoing" ? solanaAddress : "No disponible";
+  let toAddress = direction === "incoming" ? solanaAddress : "No disponible";
+
+  for (const instruction of parsedTransaction.transaction.message.instructions) {
+    if (instruction.program !== "system" || instruction.parsed?.type !== "transfer") {
+      continue;
+    }
+
+    const info = instruction.parsed.info;
+
+    if (direction === "incoming" && info.destination === solanaAddress) {
+      fromAddress = info.source || fromAddress;
+      toAddress = solanaAddress;
+      break;
+    }
+
+    if (direction === "outgoing" && info.source === solanaAddress) {
+      fromAddress = solanaAddress;
+      toAddress = info.destination || toAddress;
+      break;
+    }
+  }
+
+  return { fromAddress, toAddress };
+}
+
+export async function getSolanaNativeOnChainActivity(solanaAddress, limit = SOLANA_SIGNATURE_LIMIT) {
+  if (!isValidSolanaPublicKey(solanaAddress)) {
+    throw new Error("Dirección Solana no disponible para consultar actividad.");
+  }
+
+  const connection = getSolanaConnection();
+  const publicKey = new PublicKey(solanaAddress);
+  const signatures = await connection.getSignaturesForAddress(publicKey, { limit }, "confirmed");
+  const transactions = [];
+
+  for (const signatureInfo of signatures) {
+    if (signatureInfo.err) {
+      continue;
+    }
+
+    const parsedTransaction = await connection.getParsedTransaction(signatureInfo.signature, {
+      commitment: "confirmed",
+      maxSupportedTransactionVersion: 0,
+    });
+
+    if (!parsedTransaction || parsedTransaction.meta?.err) {
+      continue;
+    }
+
+    const accountKeys = parsedTransaction.transaction.message.accountKeys || [];
+    const walletIndex = accountKeys.findIndex((accountKey) => getSolanaAccountKeyString(accountKey) === solanaAddress);
+
+    if (walletIndex < 0) {
+      continue;
+    }
+
+    const preBalance = BigInt(parsedTransaction.meta?.preBalances?.[walletIndex] ?? 0);
+    const postBalance = BigInt(parsedTransaction.meta?.postBalances?.[walletIndex] ?? 0);
+    const deltaLamports = postBalance - preBalance;
+
+    if (deltaLamports === 0n) {
+      continue;
+    }
+
+    const direction = deltaLamports > 0n ? "incoming" : "outgoing";
+    const amountLamports = deltaLamports > 0n ? deltaLamports : -deltaLamports;
+    const parties = getSolanaInstructionParties(parsedTransaction, solanaAddress, direction);
+    const blockTime = parsedTransaction.blockTime || signatureInfo.blockTime || null;
+
+    transactions.push({
+      id: `solana-${signatureInfo.signature}`,
+      network: "solana",
+      assetType: "native",
+      tokenSymbol: "SOL",
+      direction,
+      fromAddress: parties.fromAddress,
+      toAddress: parties.toAddress,
+      amount: Number(amountLamports) / LAMPORTS_PER_SOL,
+      networkFee: direction === "outgoing" ? (parsedTransaction.meta?.fee || 0) / LAMPORTS_PER_SOL : 0,
+      txHash: signatureInfo.signature,
+      signature: signatureInfo.signature,
+      explorerUrl: buildSolanaExplorerUrl(signatureInfo.signature),
+      status: "confirmed",
+      confirmationStatus: signatureInfo.confirmationStatus || "confirmed",
+      mode: "real-devnet",
+      source: "blockchain-rpc",
+      slot: parsedTransaction.slot,
+      blockTime,
+      createdAt: blockTime ? new Date(blockTime * 1000) : null,
+    });
+  }
+
+  return transactions;
 }
 
 async function fetchBitcoinJson(path) {
   const response = await fetch(`${BITCOIN_TESTNET_API_URL}${path}`);
 
   if (!response.ok) {
-    throw new Error("bitcoin-activity-unavailable");
+    throw new Error("No se pudo actualizar Bitcoin Testnet en este momento.");
   }
 
   return response.json();
@@ -91,70 +200,11 @@ async function syncSolanaNativeActivity(uid, solanaAddress) {
     return skippedResult("Dirección Solana no disponible, se omitió la sincronización.");
   }
 
-  const connection = getSolanaConnection();
-  const publicKey = new PublicKey(solanaAddress);
-  const signatures = await connection.getSignaturesForAddress(publicKey, {
-    limit: SOLANA_SIGNATURE_LIMIT,
-  });
+  const transactions = await getSolanaNativeOnChainActivity(solanaAddress, SOLANA_SIGNATURE_LIMIT);
   let createdCount = 0;
 
-  for (const signatureInfo of signatures) {
-    const parsedTransaction = await connection.getParsedTransaction(signatureInfo.signature, {
-      commitment: "confirmed",
-      maxSupportedTransactionVersion: 0,
-    });
-
-    if (!parsedTransaction || parsedTransaction.meta?.err) {
-      continue;
-    }
-
-    let netLamports = 0n;
-    let fromAddress = "No disponible";
-    let toAddress = "No disponible";
-
-    for (const instruction of parsedTransaction.transaction.message.instructions) {
-      if (instruction.program !== "system" || instruction.parsed?.type !== "transfer") {
-        continue;
-      }
-
-      const info = instruction.parsed.info;
-      const lamports = BigInt(info.lamports || 0);
-
-      if (info.destination === solanaAddress) {
-        netLamports += lamports;
-        fromAddress = info.source || fromAddress;
-        toAddress = solanaAddress;
-      }
-
-      if (info.source === solanaAddress) {
-        netLamports -= lamports;
-        fromAddress = solanaAddress;
-        toAddress = info.destination || toAddress;
-      }
-    }
-
-    if (netLamports === 0n) {
-      continue;
-    }
-
-    const direction = netLamports > 0n ? "incoming" : "outgoing";
-    const createdId = await createSynced(uid, {
-      network: "solana",
-      assetType: "native",
-      direction,
-      fromAddress,
-      toAddress,
-      amount: Number(netLamports > 0n ? netLamports : -netLamports) / LAMPORTS_PER_SOL,
-      networkFee: direction === "outgoing" ? (parsedTransaction.meta?.fee || 0) / LAMPORTS_PER_SOL : 0,
-      txHash: signatureInfo.signature,
-      signature: signatureInfo.signature,
-      explorerUrl: buildSolanaExplorerUrl(signatureInfo.signature),
-      status: "success",
-      confirmationStatus: signatureInfo.confirmationStatus || "confirmed",
-      mode: "real-devnet",
-      slot: parsedTransaction.slot,
-      blockTime: parsedTransaction.blockTime,
-    });
+  for (const transaction of transactions) {
+    const createdId = await createSynced(uid, transaction);
 
     if (createdId) {
       createdCount += 1;
@@ -287,6 +337,134 @@ async function fetchBscScanTransactions(address) {
   const data = await response.json();
 
   return Array.isArray(data.result) ? data.result : [];
+}
+
+function mapBscScanNativeTransaction(transaction, bnbAddress) {
+  const lowerAddress = bnbAddress.toLowerCase();
+  const fromAddress = transaction.from || "No disponible";
+  const toAddress = transaction.to || "No disponible";
+  const isIncoming = toAddress.toLowerCase() === lowerAddress;
+  const isOutgoing = fromAddress.toLowerCase() === lowerAddress;
+  const valueWei = BigInt(transaction.value || "0");
+
+  if ((!isIncoming && !isOutgoing) || valueWei <= 0n) {
+    return null;
+  }
+
+  const direction = isIncoming ? "incoming" : "outgoing";
+  const networkFeeWei = direction === "outgoing"
+    ? BigInt(transaction.gasUsed || "0") * BigInt(transaction.gasPrice || "0")
+    : 0n;
+  const blockTime = transaction.timeStamp ? Number(transaction.timeStamp) : null;
+  const isFailed = transaction.isError === "1" || transaction.txreceipt_status === "0";
+
+  return {
+    id: `bnb-${transaction.hash}`,
+    network: "bnb",
+    assetType: "native",
+    tokenSymbol: "tBNB",
+    direction,
+    fromAddress,
+    toAddress,
+    amount: Number(formatEther(valueWei)),
+    networkFee: weiToBnbNumber(networkFeeWei),
+    txHash: transaction.hash,
+    explorerUrl: buildBnbExplorerUrl(transaction.hash),
+    status: isFailed ? "failed" : "confirmed",
+    confirmationStatus: isFailed ? "failed" : "confirmed",
+    mode: "real-testnet",
+    source: "blockchain-rpc",
+    chainId: BNB_TESTNET_CHAIN_ID,
+    gasUsed: Number(transaction.gasUsed || 0),
+    gasPrice: transaction.gasPrice || "0",
+    blockTime,
+    createdAt: blockTime ? new Date(blockTime * 1000) : null,
+  };
+}
+
+async function getBnbNativeFromBscScanActivity(bnbAddress, limit = 12) {
+  const transactions = await fetchBscScanTransactions(bnbAddress);
+
+  return transactions
+    .map((transaction) => mapBscScanNativeTransaction(transaction, bnbAddress))
+    .filter(Boolean)
+    .slice(0, limit);
+}
+
+async function getBnbNativeFromRecentBlocksActivity(bnbAddress, limit = 12) {
+  const provider = getBnbProvider();
+  await assertBnbTestnetProvider(provider);
+  const lowerAddress = bnbAddress.toLowerCase();
+  const latestBlock = await provider.getBlockNumber();
+  const fromBlock = Math.max(0, latestBlock - BNB_BLOCK_SCAN_LOOKBACK);
+  const results = [];
+
+  for (let blockNumber = latestBlock; blockNumber >= fromBlock && results.length < limit; blockNumber -= 1) {
+    const block = await provider.getBlock(blockNumber, true);
+    const transactions = await getBnbBlockTransactions(provider, block);
+
+    for (const transaction of transactions) {
+      if (!transaction.to || transaction.value <= 0n) {
+        continue;
+      }
+
+      const isIncoming = transaction.to.toLowerCase() === lowerAddress;
+      const isOutgoing = transaction.from.toLowerCase() === lowerAddress;
+
+      if (!isIncoming && !isOutgoing) {
+        continue;
+      }
+
+      const receipt = isOutgoing ? await provider.getTransactionReceipt(transaction.hash) : null;
+      const networkFeeWei = receipt ? receipt.gasUsed * (receipt.gasPrice || transaction.gasPrice || 0n) : 0n;
+      const blockTime = block?.timestamp || null;
+
+      results.push({
+        id: `bnb-${transaction.hash}`,
+        network: "bnb",
+        assetType: "native",
+        tokenSymbol: "tBNB",
+        direction: isIncoming ? "incoming" : "outgoing",
+        fromAddress: transaction.from,
+        toAddress: transaction.to,
+        amount: Number(formatEther(transaction.value)),
+        networkFee: weiToBnbNumber(networkFeeWei),
+        txHash: transaction.hash,
+        explorerUrl: buildBnbExplorerUrl(transaction.hash),
+        status: "confirmed",
+        confirmationStatus: "confirmed",
+        mode: "real-testnet",
+        source: "blockchain-rpc",
+        chainId: BNB_TESTNET_CHAIN_ID,
+        gasUsed: receipt?.gasUsed ? Number(receipt.gasUsed) : 0,
+        gasPrice: (receipt?.gasPrice || transaction.gasPrice || 0n).toString(),
+        blockTime,
+        createdAt: blockTime ? new Date(blockTime * 1000) : null,
+      });
+
+      if (results.length >= limit) {
+        break;
+      }
+    }
+  }
+
+  return results;
+}
+
+export async function getBnbNativeOnChainActivity(bnbAddress, limit = 12) {
+  if (!isValidBnbTestnetAddress(bnbAddress)) {
+    throw new Error("Dirección BNB Testnet no disponible para consultar actividad.");
+  }
+
+  if (BSCSCAN_TESTNET_API_KEY) {
+    return getBnbNativeFromBscScanActivity(bnbAddress, limit);
+  }
+
+  if (!BNB_TESTNET_RPC_URL) {
+    throw new Error("BNB Testnet requiere API key de explorador o RPC configurado para consultar actividad.");
+  }
+
+  return getBnbNativeFromRecentBlocksActivity(bnbAddress, limit);
 }
 
 async function syncBnbNativeFromBscScan(uid, bnbAddress) {
@@ -531,22 +709,20 @@ async function syncBep20DemoActivity(uid, bnbAddress) {
   return successResult(createdCount);
 }
 
-async function syncBitcoinTestnetActivity(uid, bitcoinAddress) {
+export async function getBitcoinTestnetOnChainActivity(bitcoinAddress, limit = BITCOIN_TX_LIMIT) {
   if (!isValidBitcoinTestnetAddress(bitcoinAddress)) {
-    return skippedResult("Dirección Bitcoin Testnet no disponible, se omitió la sincronización.");
+    throw new Error("Dirección Bitcoin Testnet no disponible para consultar actividad.");
   }
 
   const transactions = await fetchBitcoinJson(`/address/${bitcoinAddress}/txs`);
-  let createdCount = 0;
+  const results = [];
 
-  for (const transaction of transactions.slice(0, BITCOIN_TX_LIMIT)) {
-    const receivedSatoshis = transaction.vout.reduce((total, output) => (
-      output.scriptpubkey_address === bitcoinAddress ? total + BigInt(output.value || 0) : total
-    ), 0n);
-    const sentSatoshis = transaction.vin.reduce((total, input) => (
-      input.prevout?.scriptpubkey_address === bitcoinAddress ? total + BigInt(input.prevout.value || 0) : total
-    ), 0n);
-    const netSatoshis = receivedSatoshis - sentSatoshis;
+  for (const transaction of transactions.slice(0, limit)) {
+    const receivedOutputs = transaction.vout.filter((output) => output.scriptpubkey_address === bitcoinAddress);
+    const sentInputs = transaction.vin.filter((input) => input.prevout?.scriptpubkey_address === bitcoinAddress);
+    const incomingSatoshis = receivedOutputs.reduce((total, output) => total + BigInt(output.value || 0), 0n);
+    const outgoingSatoshis = sentInputs.reduce((total, input) => total + BigInt(input.prevout?.value || 0), 0n);
+    const netSatoshis = incomingSatoshis - outgoingSatoshis;
 
     if (netSatoshis === 0n) {
       continue;
@@ -554,21 +730,21 @@ async function syncBitcoinTestnetActivity(uid, bitcoinAddress) {
 
     const feeSatoshis = BigInt(transaction.fee || 0);
     const direction = netSatoshis > 0n ? "incoming" : "outgoing";
-    const outgoingAmountSatoshis = sentSatoshis > receivedSatoshis
-      ? sentSatoshis - receivedSatoshis - feeSatoshis
-      : 0n;
-    const amountSatoshis = direction === "incoming"
-      ? netSatoshis
-      : outgoingAmountSatoshis > 0n ? outgoingAmountSatoshis : -netSatoshis;
+    const amountSatoshis = netSatoshis > 0n ? netSatoshis : -netSatoshis;
     const fromAddress = direction === "incoming"
-      ? transaction.vin.find((input) => input.prevout?.scriptpubkey_address !== bitcoinAddress)?.prevout?.scriptpubkey_address || "No disponible"
+      ? transaction.vin.find((input) => input.prevout?.scriptpubkey_address)?.prevout?.scriptpubkey_address || "No disponible"
       : bitcoinAddress;
     const toAddress = direction === "incoming"
       ? bitcoinAddress
       : transaction.vout.find((output) => output.scriptpubkey_address && output.scriptpubkey_address !== bitcoinAddress)?.scriptpubkey_address || "No disponible";
-    const createdId = await createSynced(uid, {
+    const isConfirmed = transaction.status?.confirmed === true;
+    const blockTime = transaction.status?.block_time || null;
+
+    results.push({
+      id: `bitcoin-${transaction.txid}`,
       network: "bitcoin",
       assetType: "native",
+      tokenSymbol: "BTC",
       direction,
       fromAddress,
       toAddress,
@@ -576,10 +752,28 @@ async function syncBitcoinTestnetActivity(uid, bitcoinAddress) {
       networkFee: direction === "outgoing" ? satoshisToBtcNumber(feeSatoshis) : 0,
       txHash: transaction.txid,
       explorerUrl: buildBitcoinTxExplorerUrl(transaction.txid),
-      status: "success",
-      confirmationStatus: transaction.status?.confirmed ? "confirmed" : "broadcast",
+      status: isConfirmed ? "confirmed" : "pending",
+      confirmationStatus: isConfirmed ? "confirmed" : "pending",
       mode: "real-testnet",
+      source: "blockchain-rpc",
+      blockTime,
+      createdAt: blockTime ? new Date(blockTime * 1000) : null,
     });
+  }
+
+  return results;
+}
+
+async function syncBitcoinTestnetActivity(uid, bitcoinAddress) {
+  if (!isValidBitcoinTestnetAddress(bitcoinAddress)) {
+    return skippedResult("Dirección Bitcoin Testnet no disponible, se omitió la sincronización.");
+  }
+
+  const transactions = await getBitcoinTestnetOnChainActivity(bitcoinAddress, BITCOIN_TX_LIMIT);
+  let createdCount = 0;
+
+  for (const transaction of transactions) {
+    const createdId = await createSynced(uid, transaction);
 
     if (createdId) {
       createdCount += 1;
@@ -626,10 +820,11 @@ export async function syncWalletActivity(uid, wallet) {
   const hasOnlyFailures = errors.length > 0 && successful.length === 0;
   const hasPartialFailures = errors.length > 0 && successful.length > 0;
   const skippedMessage = skipped.find((result) => result.asset === "tBNB")?.message || skipped[0]?.message || "";
+  const errorMessage = errors.find((result) => result.network === "bitcoin")?.message || errors[0]?.message || "";
   const message = hasOnlyFailures
-    ? "No se pudo actualizar actividad en este momento."
+    ? errorMessage || "No se pudo actualizar actividad en este momento."
     : hasPartialFailures
-      ? "Actividad actualizada parcialmente. Algunas redes no respondieron."
+      ? `Actividad actualizada parcialmente. ${errorMessage || "Algunas redes no respondieron."}`
       : createdCount > 0
         ? "Actividad actualizada."
         : skippedMessage || "No hay movimientos recientes.";

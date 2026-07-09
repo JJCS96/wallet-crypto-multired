@@ -40,14 +40,14 @@ function getReceiveAddressNote(networkId, receivableAssets) {
 
   if (networkId === "solana") {
     return hasToken
-      ? "SOL y USDT-DEMO SPL se reciben en esta misma dirección Solana."
-      : "SOL se recibe en esta dirección Solana.";
+      ? "SOL y USDT-DEMO SPL se reciben en esta misma direccion Solana."
+      : "SOL se recibe en esta direccion Solana.";
   }
 
   if (networkId === "bnb") {
     return hasToken
-      ? "tBNB y USDT-DEMO BEP20 se reciben en esta misma dirección BNB 0x."
-      : "tBNB se recibe en esta dirección BNB 0x.";
+      ? "tBNB y USDT-DEMO BEP20 se reciben en esta misma direccion BNB 0x."
+      : "tBNB se recibe en esta direccion BNB 0x.";
   }
 
   return "Bitcoin Testnet recibe solo BTC nativo.";
@@ -93,8 +93,8 @@ function ReceiveFunds({ user }) {
   const displayedAddress = canUseCurrentAddress
     ? currentAddress
     : networkId === "bitcoin"
-      ? "Dirección incompatible con Bitcoin Testnet"
-      : currentAddress;
+      ? "Direccion incompatible con Bitcoin Testnet"
+      : currentAddress || "Direccion no disponible";
   const addressExplorerUrl = getAddressExplorerUrl(networkId, currentAddress);
   const receivableAssets = getAssetsForNetwork(networkId);
   const receiveAddressNote = getReceiveAddressNote(networkId, receivableAssets);
@@ -109,7 +109,12 @@ function ReceiveFunds({ user }) {
     }
 
     await navigator.clipboard.writeText(currentAddress);
-    setCopyMessage("Dirección copiada correctamente.");
+    setCopyMessage("Direccion copiada correctamente.");
+  }
+
+  function handleNetworkChange(nextNetworkId) {
+    setNetworkId(nextNetworkId);
+    setCopyMessage("");
   }
 
   return (
@@ -117,7 +122,7 @@ function ReceiveFunds({ user }) {
       user={user}
       title="Recibir fondos"
       kicker="Recibir"
-      description="Selecciona una red y comparte tu dirección pública." 
+      description="Selecciona una red y comparte tu direccion publica."
     >
       {loading ? (
         <section className="placeholder-page">
@@ -130,12 +135,12 @@ function ReceiveFunds({ user }) {
           <article className="placeholder-card">
             <WalletEmptyState
               title="Necesitas una Wallet antes de recibir"
-              description="Primero crea o restaura tu Wallet para disponer de direcciones públicas por red."
+              description="Primero crea o restaura tu Wallet para disponer de direcciones publicas por red."
               badge="Sin Wallet"
               steps={[
                 "Crear Wallet nueva.",
                 "O restaurar una existente con frase semilla.",
-                "Después podrás compartir direcciones y QR.",
+                "Despues podras compartir direcciones y QR.",
               ]}
               primaryAction={{ to: APP_ROUTES.createWallet, label: "Crear Wallet" }}
               secondaryAction={{ to: APP_ROUTES.restoreWallet, label: "Restaurar Wallet" }}
@@ -143,79 +148,81 @@ function ReceiveFunds({ user }) {
           </article>
         </section>
       ) : (
-        <section className="placeholder-page">
-          <div className="placeholder-grid wallet-summary-grid">
-            <article className="placeholder-card placeholder-card--accent">
-              <p className="placeholder-kicker">Selecciona red</p>
-              <h2 className="placeholder-title">Recibir en tu Wallet</h2>
-              <div className="wallet-network-switcher">
-                {SUPPORTED_NETWORK_IDS.map((id) => (
-                  <button
-                    key={id}
-                    className={`chart-range-button ${networkId === id ? "active" : ""}`}
-                    type="button"
-                    onClick={() => setNetworkId(id)}
-                  >
-                    {NETWORKS[id].shortLabel}
-                  </button>
-                ))}
+        <section className="placeholder-page receive-page">
+          <article className="dashboard-card receive-main-card">
+            <div className="receive-card-header">
+              <div>
+                <p className="placeholder-kicker">Direccion publica</p>
+                <h2 className="placeholder-title">Recibir en NovaWallet</h2>
+                <p className="dashboard-note">Selecciona una red y comparte tu direccion publica.</p>
               </div>
-
-              <p className="placeholder-copy">
-                Red: <strong>{currentNetwork.label}</strong>
-              </p>
-              <p className="placeholder-copy">
-                Usa esta dirección solo para {currentNetwork.shortLabel}.
-              </p>
-              <p className="placeholder-copy">
-                {receiveAddressNote}
-              </p>
-              <div className="asset-status-row" style={{ marginTop: "14px" }}>
-                {receivableAssets.map((asset) => (
-                  <span className="card-pill" key={asset.id}>
-                    {asset.assetType === "token" ? getAssetDisplayName(asset) : asset.symbol}
-                  </span>
-                ))}
-              </div>
-
-              {hasBitcoinMainnetAddress ? (
-                <div className="auth-error" style={{ marginTop: "18px", marginBottom: 0 }}>
-                  La dirección Bitcoin guardada pertenece a mainnet. Para usar Bitcoin Testnet, restaura tu wallet con la frase de recuperación y se actualizará la dirección pública testnet.
-                </div>
-              ) : null}
-              {copyMessage ? <div className="auth-success" style={{ marginTop: "18px" }}>{copyMessage}</div> : null}
-            </article>
-
-            <article className="placeholder-card receive-qr-card">
-              <p className="placeholder-kicker">Código QR</p>
-              <h2 className="placeholder-title">Escanea o copia</h2>
-              {canUseCurrentAddress ? (
-                <img className="receive-qr-image" src={qrUrl} alt={`Código QR para ${currentNetwork.label}`} />
-              ) : (
-                <div className="receive-qr-image receive-qr-image--empty">
-                  {networkId === "bitcoin" ? "Dirección incompatible" : "Sin dirección"}
-                </div>
-              )}
-            </article>
-          </div>
-
-          <article className="placeholder-card">
-            <p className="placeholder-kicker">Dirección pública</p>
-            <h2 className="placeholder-title">{currentNetwork.label}</h2>
-            <p className="placeholder-copy" style={{ wordBreak: "break-all" }}>{displayedAddress}</p>
-            <div className="placeholder-actions" style={{ marginTop: "18px" }}>
-              <button className="auth-button" type="button" onClick={handleCopyAddress} disabled={!canUseCurrentAddress}>
-                Copiar dirección
-              </button>
-              {addressExplorerUrl ? (
-                <a className="auth-button-secondary auth-button-link" href={addressExplorerUrl} target="_blank" rel="noreferrer">
-                  Ver dirección en explorer
-                </a>
-              ) : null}
+              <span className="card-pill card-pill--live">{currentNetwork.label}</span>
             </div>
-            <div className="auth-error" style={{ marginTop: "18px", marginBottom: 0 }}>
-              Envía únicamente {currentNetwork.shortLabel} a esta dirección. Usar una red incorrecta
-              puede provocar pérdida de fondos.
+
+            <div className="receive-content-grid">
+              <div className="receive-details-panel">
+                <div className="receive-network-panel">
+                  <span className="receive-section-label">Red seleccionada</span>
+                  <div className="wallet-network-switcher receive-network-switcher">
+                    {SUPPORTED_NETWORK_IDS.map((id) => (
+                      <button
+                        key={id}
+                        className={`chart-range-button ${networkId === id ? "active" : ""}`}
+                        type="button"
+                        onClick={() => handleNetworkChange(id)}
+                      >
+                        {NETWORKS[id].shortLabel}
+                      </button>
+                    ))}
+                  </div>
+                  <p className="dashboard-note">{receiveAddressNote}</p>
+                  <div className="asset-status-row receive-assets-row">
+                    {receivableAssets.map((asset) => (
+                      <span className="card-pill" key={asset.id}>
+                        {asset.assetType === "token" ? getAssetDisplayName(asset) : asset.symbol}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="receive-address-panel">
+                  <span className="receive-section-label">Direccion publica</span>
+                  <code className="receive-address-code">{displayedAddress}</code>
+                  <div className="receive-actions">
+                    <button className="auth-button" type="button" onClick={handleCopyAddress} disabled={!canUseCurrentAddress}>
+                      Copiar direccion
+                    </button>
+                    {addressExplorerUrl ? (
+                      <a className="auth-button-secondary auth-button-link" href={addressExplorerUrl} target="_blank" rel="noreferrer">
+                        Ver en explorer
+                      </a>
+                    ) : null}
+                  </div>
+                  {copyMessage ? <div className="auth-success receive-copy-message">{copyMessage}</div> : null}
+                </div>
+              </div>
+
+              <aside className="receive-qr-panel" aria-label="Codigo QR de direccion">
+                <p className="placeholder-kicker">Codigo QR</p>
+                <h3>Escanea o copia</h3>
+                {canUseCurrentAddress ? (
+                  <img className="receive-qr-image" src={qrUrl} alt={`Codigo QR para ${currentNetwork.label}`} />
+                ) : (
+                  <div className="receive-qr-image receive-qr-image--empty">
+                    QR de direccion
+                  </div>
+                )}
+              </aside>
+            </div>
+
+            {hasBitcoinMainnetAddress ? (
+              <div className="auth-error receive-warning">
+                La direccion Bitcoin guardada pertenece a mainnet. Para usar Bitcoin Testnet, restaura tu wallet con la frase de recuperacion.
+              </div>
+            ) : null}
+
+            <div className="receive-warning" role="alert">
+              Envia unicamente {currentNetwork.shortLabel} a esta direccion. Usar una red incorrecta puede provocar perdida de fondos.
             </div>
           </article>
         </section>

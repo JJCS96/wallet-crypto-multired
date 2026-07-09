@@ -67,4 +67,5 @@ npm run preview
 
 ## Guias De Prueba
 
+- [Seguridad y manejo de frase semilla](docs/security.md)
 - [Depositos USDT-DEMO SPL/BEP20](docs/token-deposit-testing.md)

@@ -99,12 +99,21 @@ function RestoreSeedForm({ loading, errorMessage, onPreview }) {
 
   return (
     <article className="placeholder-card wallet-auth-card wallet-onboarding-card restore-seed-card">
-      <p className="placeholder-kicker">Importar frase de recuperación</p>
-      <h2 className="placeholder-title">Ingresa tus 12 palabras en el mismo orden</h2>
+      <div className="restore-step-row">
+        <span>1</span>
+        <strong>Paso 1 de 1</strong>
+      </div>
+
+      <p className="placeholder-kicker">Importar frase de recuperacion</p>
+      <h2 className="placeholder-title">Importar una billetera</h2>
       <p className="placeholder-copy">
-        Ingresa tus 12 palabras separadas por espacios. También puedes pegar la frase completa y
-        NovaWallet la distribuirá en orden.
+        Ingresa tu frase semilla unicamente si estas en un entorno seguro. Usa las 12 palabras en el mismo orden en que las guardaste.
       </p>
+
+      <div className="seed-security-inline">
+        <strong>Nadie de NovaWallet te pedira tu frase de recuperacion.</strong>
+        <span>No la compartas ni la guardes en lugares inseguros.</span>
+      </div>
 
       {errorMessage ? (
         <div className="auth-error" style={{ marginTop: "18px" }}>
@@ -114,8 +123,8 @@ function RestoreSeedForm({ loading, errorMessage, onPreview }) {
 
       <form className="auth-form" onSubmit={handleSubmit} style={{ marginTop: "22px" }}>
         <div className="form-group">
-          <label>Frase de recuperación</label>
-          <div className="seed-input-grid" aria-label="Frase de recuperación de 12 palabras">
+          <label>Frase de recuperacion</label>
+          <div className="seed-input-grid" aria-label="Frase de recuperacion de 12 palabras">
             {seedWords.map((word, index) => (
               <label className="seed-word-input-card" htmlFor={`restore-seed-word-${index}`} key={index}>
                 <span>{index + 1}</span>
@@ -132,7 +141,7 @@ function RestoreSeedForm({ loading, errorMessage, onPreview }) {
                   autoComplete="off"
                   spellCheck="false"
                   inputMode="text"
-                  placeholder="palabra"
+                  placeholder="Palabra"
                 />
               </label>
             ))}
@@ -145,7 +154,7 @@ function RestoreSeedForm({ loading, errorMessage, onPreview }) {
 
         <div className="wallet-auth-actions wallet-auth-actions--inline">
           <button className="auth-button wallet-primary-btn" type="submit" disabled={loading || wordCount !== SEED_WORD_COUNT}>
-            {loading ? "Validando frase..." : "Previsualizar billetera"}
+            {loading ? "Validando frase..." : "Continuar"}
           </button>
           <button className="auth-button-secondary wallet-secondary-btn" type="button" disabled={loading || wordCount === 0} onClick={handleClear}>
             Limpiar

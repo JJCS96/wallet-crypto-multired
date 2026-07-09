@@ -6,8 +6,13 @@ import { ASSETS, ASSET_IDS, getAssetDisplayName, getVisibleAssetIds } from "../c
 import { APP_ROUTES } from "../constants/routes";
 import { getBalanceByNetwork } from "../services/blockchain/balance.service";
 import { getNativeAssetPricesUsd } from "../services/market/prices.service";
-import { syncWalletActivity } from "../services/transactions/activity-sync.service";
-import { getTransactions } from "../services/transactions/transactions.service";
+import {
+  getBitcoinTestnetOnChainActivity,
+  getBnbNativeOnChainActivity,
+  getSolanaNativeOnChainActivity,
+  syncWalletActivity,
+} from "../services/transactions/activity-sync.service";
+import { getTransactions, mergeTransactions } from "../services/transactions/transactions.service";
 import { getUserWallet } from "../services/user-wallets.service";
 
 const ASSET_ORDER = getVisibleAssetIds();
@@ -82,7 +87,20 @@ function getActivitySyncMessage(results) {
     return "";
   }
 
-  return results.hasOnlyFailures ? "" : results.message || "";
+  const message = results.hasOnlyFailures ? "" : results.message || "";
+  const lowerMessage = message.toLowerCase();
+
+  if (
+    lowerMessage.includes("permission")
+    || lowerMessage.includes("api")
+    || lowerMessage.includes("rpc")
+    || lowerMessage.includes("unavailable")
+    || lowerMessage.includes("configur")
+  ) {
+    return "Actividad on-chain cargada parcialmente.";
+  }
+
+  return message;
 }
 
 function getActivitySyncError(results) {
@@ -93,14 +111,46 @@ function getActivitySyncError(results) {
   return results.hasOnlyFailures ? results.message || "No se pudo sincronizar la actividad en este momento." : "";
 }
 
-async function loadRecentActivity(uid) {
-  const transactions = await getTransactions(uid);
-  return transactions.slice(0, 4);
+async function loadStoredActivity(uid) {
+  try {
+    return await getTransactions(uid);
+  } catch {
+    return [];
+  }
+}
+
+async function loadOnChainActivity(currentWallet) {
+  const jobs = [];
+
+  if (currentWallet?.solanaAddress) {
+    jobs.push(getSolanaNativeOnChainActivity(currentWallet.solanaAddress, 12));
+  }
+
+  if (currentWallet?.bnbAddress) {
+    jobs.push(getBnbNativeOnChainActivity(currentWallet.bnbAddress, 12));
+  }
+
+  if (currentWallet?.bitcoinAddress) {
+    jobs.push(getBitcoinTestnetOnChainActivity(currentWallet.bitcoinAddress, 12));
+  }
+
+  const results = await Promise.allSettled(jobs);
+
+  return results.flatMap((result) => (result.status === "fulfilled" ? result.value : []));
+}
+
+async function loadRecentActivity(uid, currentWallet) {
+  const [storedTransactions, onChainTransactions] = await Promise.all([
+    loadStoredActivity(uid),
+    loadOnChainActivity(currentWallet),
+  ]);
+
+  return mergeTransactions(storedTransactions, onChainTransactions).slice(0, 5);
 }
 
 async function syncAndLoadActivity(uid, currentWallet) {
   const results = await syncWalletActivity(uid, currentWallet);
-  const transactions = await loadRecentActivity(uid);
+  const transactions = await loadRecentActivity(uid, currentWallet);
 
   return { results, transactions };
 }
@@ -200,7 +250,7 @@ function Dashboard({ user }) {
         }
 
         if (isMounted) {
-          const initialTransactions = await loadRecentActivity(user.uid);
+          const initialTransactions = await loadRecentActivity(user.uid, currentWallet);
 
           if (isMounted) {
             setRecentActivity(initialTransactions);

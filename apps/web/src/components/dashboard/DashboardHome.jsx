@@ -1,3 +1,19 @@
+import { Link } from "react-router-dom";
+import { APP_ROUTES } from "../../constants/routes";
+
+const QUICK_ACTIONS = [
+  { label: "Enviar", icon: "TX", to: APP_ROUTES.sendTransaction },
+  { label: "Recibir", icon: "RC", to: APP_ROUTES.receiveFunds },
+  { label: "Historial", icon: "HI", to: APP_ROUTES.transactionHistory },
+  { label: "Restaurar", icon: "RW", to: APP_ROUTES.restoreWallet },
+];
+
+const ASSET_COLORS = {
+  SOL: "#14f195",
+  tBNB: "#f3ba2f",
+  BTC: "#f7931a",
+};
+
 function formatActivityAmount(value) {
   return Number(value || 0).toFixed(8).replace(/0+$/, "").replace(/\.$/, "");
 }
@@ -9,6 +25,37 @@ function formatUsd(value) {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   }).format(value);
+}
+
+function formatDate(value) {
+  if (!value) {
+    return "Pendiente";
+  }
+
+  const date = typeof value.toDate === "function" ? value.toDate() : new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return "Pendiente";
+  }
+
+  return date.toLocaleDateString("es-EC", {
+    day: "2-digit",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function getTransactionDate(transaction) {
+  if (transaction.createdAt) {
+    return transaction.createdAt;
+  }
+
+  if (typeof transaction.blockTime === "number") {
+    return new Date(transaction.blockTime * 1000);
+  }
+
+  return null;
 }
 
 function getActivitySymbol(transaction) {
@@ -27,9 +74,44 @@ function getActivitySymbol(transaction) {
   return "SOL";
 }
 
-function getActivityTitle(transaction) {
-  const action = transaction.direction === "incoming" ? "Recibido" : "Enviado";
-  return `${action} ${formatActivityAmount(transaction.amount)} ${getActivitySymbol(transaction)}`;
+function getNetworkLabel(network) {
+  if (network === "bitcoin") {
+    return "Bitcoin Testnet";
+  }
+
+  if (network === "bnb") {
+    return "BNB Testnet";
+  }
+
+  return "Solana Devnet";
+}
+
+function getDirectionLabel(direction) {
+  if (direction === "incoming") {
+    return "Recibido";
+  }
+
+  if (direction === "outgoing") {
+    return "Enviado";
+  }
+
+  return "Movimiento";
+}
+
+function getStatusLabel(status) {
+  if (status === "confirmed" || status === "success") {
+    return "Confirmada";
+  }
+
+  if (status === "pending") {
+    return "Pendiente";
+  }
+
+  if (status === "failed") {
+    return "Fallida";
+  }
+
+  return status || "Registrada";
 }
 
 function formatShortHash(value) {
@@ -40,12 +122,145 @@ function formatShortHash(value) {
   return `${value.slice(0, 8)}...${value.slice(-6)}`;
 }
 
-import { Link } from "react-router-dom";
-import { APP_ROUTES } from "../../constants/routes";
+function parseAssetAmount(value = "") {
+  const parsed = Number.parseFloat(String(value).replace(/,/g, ""));
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function normalizeActivityError(message) {
+  if (!message) {
+    return "";
+  }
+
+  const lowerMessage = message.toLowerCase();
+
+  if (
+    lowerMessage.includes("permission")
+    || lowerMessage.includes("api")
+    || lowerMessage.includes("rpc")
+    || lowerMessage.includes("unavailable")
+    || lowerMessage.includes("configur")
+  ) {
+    return "Actividad on-chain cargada parcialmente. No se pudo consultar una de las redes.";
+  }
+
+  return message;
+}
+
+function buildPortfolioTrend(totalUsd) {
+  const base = typeof totalUsd === "number" && totalUsd > 0 ? totalUsd : 220;
+  const multipliers = [0.72, 0.78, 0.75, 0.86, 0.91, 0.88, 1];
+
+  return multipliers.map((multiplier, index) => ({
+    label: `P${index + 1}`,
+    value: Number((base * multiplier).toFixed(2)),
+  }));
+}
+
+function buildDistribution(nativeBalanceSummary) {
+  const source = nativeBalanceSummary.length > 0
+    ? nativeBalanceSummary
+    : [
+      { label: "SOL", value: "1 SOL" },
+      { label: "tBNB", value: "1 tBNB" },
+      { label: "BTC", value: "1 BTC" },
+    ];
+  const entries = source.map((asset) => ({
+    label: asset.label,
+    value: parseAssetAmount(asset.value),
+    color: ASSET_COLORS[asset.label] || "#8b5cf6",
+  }));
+  const total = entries.reduce((sum, item) => sum + item.value, 0);
+  const safeEntries = total > 0
+    ? entries
+    : entries.map((item) => ({ ...item, value: 1 }));
+  const safeTotal = safeEntries.reduce((sum, item) => sum + item.value, 0);
+
+  return safeEntries.map((item) => ({
+    ...item,
+    percent: Math.round((item.value / safeTotal) * 100),
+  }));
+}
+
+function PortfolioTrendChart({ points }) {
+  const width = 420;
+  const height = 170;
+  const padding = 16;
+  const values = points.map((point) => point.value);
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  const range = max - min || 1;
+  const coordinates = points.map((point, index) => {
+    const x = padding + (index * (width - padding * 2)) / (points.length - 1);
+    const y = height - padding - ((point.value - min) / range) * (height - padding * 2);
+    return { x, y };
+  });
+  const linePath = coordinates.map((point, index) => `${index === 0 ? "M" : "L"} ${point.x} ${point.y}`).join(" ");
+  const areaPath = `${linePath} L ${coordinates.at(-1).x} ${height - padding} L ${coordinates[0].x} ${height - padding} Z`;
+
+  return (
+    <svg className="portfolio-line-chart" viewBox={`0 0 ${width} ${height}`} role="img" aria-label="Evolucion visual del portafolio">
+      <defs>
+        <linearGradient id="portfolioAreaGradient" x1="0" x2="0" y1="0" y2="1">
+          <stop offset="0%" stopColor="#8b5cf6" stopOpacity="0.32" />
+          <stop offset="100%" stopColor="#8b5cf6" stopOpacity="0.02" />
+        </linearGradient>
+      </defs>
+      <path className="portfolio-line-chart__grid" d={`M ${padding} ${height - padding} H ${width - padding}`} />
+      <path className="portfolio-line-chart__area" d={areaPath} />
+      <path className="portfolio-line-chart__line" d={linePath} />
+      {coordinates.map((point) => (
+        <circle className="portfolio-line-chart__point" cx={point.x} cy={point.y} key={`${point.x}-${point.y}`} r="4" />
+      ))}
+    </svg>
+  );
+}
+
+function AssetDistributionChart({ items }) {
+  const radius = 38;
+  const circumference = 2 * Math.PI * radius;
+  const segments = items.reduce((result, item) => {
+    const previousOffset = result.reduce((sum, segment) => sum + segment.length, 0);
+    const length = (item.percent / 100) * circumference;
+
+    return [...result, { ...item, length, offset: previousOffset }];
+  }, []);
+
+  return (
+    <div className="asset-distribution-layout">
+      <svg className="asset-donut-chart" viewBox="0 0 112 112" role="img" aria-label="Distribucion de activos">
+        <circle className="asset-donut-chart__track" cx="56" cy="56" r={radius} />
+        {segments.map((item) => (
+          <circle
+            className="asset-donut-chart__segment"
+            cx="56"
+            cy="56"
+            key={item.label}
+            r={radius}
+            stroke={item.color}
+            strokeDasharray={`${item.length} ${circumference - item.length}`}
+            strokeDashoffset={-item.offset}
+          />
+        ))}
+        <text className="asset-donut-chart__label" x="56" y="53">3</text>
+        <text className="asset-donut-chart__sublabel" x="56" y="67">redes</text>
+      </svg>
+
+      <div className="asset-distribution-list">
+        {items.map((item) => (
+          <div className="asset-distribution-item" key={item.label}>
+            <span style={{ backgroundColor: item.color }} aria-hidden="true" />
+            <strong>{item.label}</strong>
+            <small>{item.percent}%</small>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 function DashboardHome({
   displayName,
-  assets,
   estimatedTotalUsd,
   estimatedTotalUsdLoading,
   estimatedTotalUsdError,
@@ -61,58 +276,41 @@ function DashboardHome({
     : estimatedTotalUsdError
       ? "Valor estimado no disponible"
       : formatUsd(typeof estimatedTotalUsd === "number" ? estimatedTotalUsd : 0);
-
-  function getAssetState(asset) {
-    if (asset.configured === false || asset.amount === "No configurado") {
-      return "No disponible";
-    }
-
-    if (asset.amount === "Balance no disponible" || asset.amount === "No disponible") {
-      return "Sin fondos";
-    }
-
-    return "Activo";
-  }
-
-  function getAssetDescription(asset) {
-    if (asset.amount === "No configurado") {
-      return asset.name === "SPL Demo Token"
-        ? "Configura el mint en .env.local."
-        : "Configura el contrato en .env.local.";
-    }
-
-    if (asset.symbol === "SOL") {
-      return "Envío y recepción disponibles.";
-    }
-
-    if (asset.symbol === "tBNB") {
-      return "Requiere tBNB para gas.";
-    }
-
-    if (asset.symbol === "BTC") {
-      return "Disponible si existen UTXOs.";
-    }
-
-    return "Token demo en red de prueba.";
-  }
+  const activityError = normalizeActivityError(activitySyncError);
+  const incomingCount = recentActivity.filter((transaction) => transaction.direction === "incoming").length;
+  const outgoingCount = recentActivity.filter((transaction) => transaction.direction === "outgoing").length;
+  const trendPoints = buildPortfolioTrend(estimatedTotalUsd);
+  const distributionItems = buildDistribution(nativeBalanceSummary);
+  const kpis = [
+    { icon: "USD", label: "Balance estimado", value: totalLabel, hint: "Solo activos nativos" },
+    { icon: "AS", label: "Activos", value: nativeBalanceSummary.length, hint: "SOL, tBNB y BTC" },
+    { icon: "IN", label: "Recibido", value: incomingCount, hint: "Movimientos recientes" },
+    { icon: "OUT", label: "Enviado", value: outgoingCount, hint: "Movimientos recientes" },
+  ];
 
   return (
     <>
-      <section className="wallet-overview-grid wallet-overview-grid--single">
-        <article className="dashboard-card wallet-balance-card nova-card--hero">
-          <span className="wallet-balance-card__mesh" aria-hidden="true" />
-          <div className="card-header-row">
+      <section className="dashboard-modern-grid">
+        <article className="dashboard-card wallet-balance-card dashboard-hero-card">
+          <div className="dashboard-balance-layout">
             <div>
-              <p className="card-label">Balance total</p>
-              <p className="dashboard-note">Valor estimado de activos en redes de prueba.</p>
+              <p className="card-label">Balance total estimado</p>
+              <div className={`balance ${estimatedTotalUsdError ? "balance--unavailable" : ""}`}>
+                {totalLabel} {!estimatedTotalUsdError && !estimatedTotalUsdLoading ? <span>USD</span> : null}
+              </div>
+              <p className="dashboard-note">
+                Activos en redes de prueba, sin valor comercial real. Hola, {displayName}.
+              </p>
+            </div>
+
+            <div className="balance-hero-mark" aria-hidden="true">
+              <span>NW</span>
             </div>
           </div>
 
-          <div className={`balance ${estimatedTotalUsdError ? "balance--unavailable" : ""}`}>
-            {totalLabel} {!estimatedTotalUsdError && !estimatedTotalUsdLoading ? <span>USD</span> : null}
-          </div>
+          {estimatedTotalUsdError ? <p className="negative dashboard-soft-warning">Valor estimado no disponible por el momento.</p> : null}
 
-          <div className="native-balance-list" aria-label="Activos nativos incluidos en el total estimado">
+          <div className="native-balance-list native-balance-list--compact" aria-label="Activos nativos incluidos en el total estimado">
             {nativeBalanceSummary.map((asset) => (
               <div className="native-balance-row" key={asset.label}>
                 <span>{asset.label}</span>
@@ -120,112 +318,119 @@ function DashboardHome({
               </div>
             ))}
           </div>
-
-          {estimatedTotalUsdError ? <p className="negative">{estimatedTotalUsdError}</p> : null}
-          <p className="dashboard-note">Activos en redes de prueba, sin valor comercial real.</p>
-          <p className="dashboard-note">Hola, {displayName}. Los tokens demo no se incluyen en el total USD.</p>
         </article>
-      </section>
 
-      <section className="dashboard-card assets-network-card nova-card--interactive">
-        <div className="card-header-row">
-          <h2>Mis activos</h2>
-          <span className="card-pill card-pill--muted">Redes de prueba</span>
-        </div>
-
-        <div className="asset-card-grid">
-            {assets.map((asset) => {
-              const assetState = getAssetState(asset);
-              const isUnavailable = assetState === "No configurado";
-
-              return (
-            <article className={`asset-network-tile ${isUnavailable ? "asset-network-tile--muted" : ""}`} key={`${asset.name}-${asset.symbol}`}>
-              <div className="asset-name-cell">
-                <span
-                  className="asset-icon"
-                  aria-hidden="true"
-                  style={{ backgroundColor: asset.color }}
-                >
-                  {asset.symbol[0]}
-                </span>
-
-                <div className="asset-copy">
-                  <strong>{asset.name}</strong>
-                  <span>{asset.network}</span>
-                </div>
-              </div>
-
-              <div className="asset-status-row">
-                <span className="card-pill">{asset.statusLabel}</span>
-                <span className={`card-pill ${isUnavailable ? "card-pill--muted" : "card-pill--live"}`}>{assetState}</span>
-              </div>
-
-              <p className="asset-amount">{asset.amount}</p>
-              <p className="dashboard-note asset-note">{getAssetDescription(asset)}</p>
-
-              <div className="asset-action-row">
-                {isUnavailable ? (
-                  <span className="asset-action-disabled">Recibir</span>
-                ) : (
-                  <Link className="auth-button-secondary auth-button-link" to={APP_ROUTES.receiveFunds}>
-                    Recibir
-                  </Link>
-                )}
-                {asset.canSend && !isUnavailable ? (
-                  <Link className="auth-button auth-button-link" to={APP_ROUTES.sendTransaction}>
-                    Enviar
-                  </Link>
-                ) : (
-                  <span className="asset-action-disabled">Enviar</span>
-                )}
+        <section className="dashboard-kpi-grid" aria-label="Indicadores del dashboard">
+          {kpis.map((kpi) => (
+            <article className="dashboard-kpi-card" key={kpi.label}>
+              <span className="dashboard-kpi-card__icon" aria-hidden="true">{kpi.icon}</span>
+              <div>
+                <p>{kpi.label}</p>
+                <strong>{kpi.value}</strong>
+                <small>{kpi.hint}</small>
               </div>
             </article>
-              );
-            })}
-        </div>
-      </section>
+          ))}
+        </section>
 
-      <section className="dashboard-card recent-activity-card nova-card--interactive">
-        <div className="card-header-row">
-          <h2>Actividad reciente</h2>
-          <div className="placeholder-actions" style={{ marginTop: 0 }}>
-            <button className="inline-link-text" type="button" onClick={onRefreshActivity} disabled={activitySyncing}>
-              {activitySyncing ? "Actualizando..." : "Actualizar actividad"}
-            </button>
-            <Link className="inline-link-text" to={APP_ROUTES.transactionHistory}>Ver historial</Link>
-          </div>
-        </div>
+        <section className="dashboard-chart-grid">
+          <article className="dashboard-card dashboard-chart-card">
+            <div className="card-header-row">
+              <div>
+                <h2>Evolucion del portafolio</h2>
+                <p className="dashboard-note">Vista estimada para sustentar la tendencia del balance.</p>
+              </div>
+              <span className="card-pill card-pill--muted">Demo visual</span>
+            </div>
+            <PortfolioTrendChart points={trendPoints} />
+          </article>
 
-        {activitySyncing ? <p className="dashboard-note">Actualizando actividad...</p> : null}
-        {activitySyncNotice && !activitySyncing ? <p className="dashboard-note">{activitySyncNotice}</p> : null}
-        {activitySyncError ? <p className="negative">{activitySyncError}</p> : null}
+          <article className="dashboard-card dashboard-chart-card dashboard-chart-card--compact">
+            <div className="card-header-row">
+              <div>
+                <h2>Distribucion</h2>
+                <p className="dashboard-note">Proporcion por activos nativos.</p>
+              </div>
+            </div>
+            <AssetDistributionChart items={distributionItems} />
+          </article>
+        </section>
 
-        {recentActivity.length > 0 ? (
-          <div className="history-list history-list--compact">
-            {recentActivity.map((transaction) => (
-              <article className="history-card history-card--compact" key={transaction.id}>
-                <div>
-                  <strong>{getActivityTitle(transaction)}</strong>
-                  <span>{transaction.network} · {transaction.status}</span>
-                </div>
-                <div>
-                  <span>{formatShortHash(transaction.txHash)}</span>
-                  {transaction.explorerUrl ? (
-                    <a className="inline-link-text" href={transaction.explorerUrl} target="_blank" rel="noreferrer">
-                      Explorer
-                    </a>
-                  ) : null}
-                </div>
-              </article>
-            ))}
-          </div>
-        ) : (
-          <div className="empty-activity-state">
-            <span aria-hidden="true">TX</span>
-            <strong>Aún no tienes movimientos</strong>
-            <p>Envía, recibe o actualiza actividad para ver tus transacciones.</p>
-          </div>
-        )}
+        <section className="dashboard-bottom-grid">
+          <article className="dashboard-card recent-activity-card nova-card--interactive">
+            <div className="card-header-row">
+              <div>
+                <h2>Actividad reciente</h2>
+                <p className="dashboard-note">Ultimos movimientos sincronizados.</p>
+              </div>
+              <div className="placeholder-actions" style={{ marginTop: 0 }}>
+                <button className="inline-link-text" type="button" onClick={onRefreshActivity} disabled={activitySyncing}>
+                  {activitySyncing ? "Actualizando..." : "Actualizar"}
+                </button>
+                <Link className="inline-link-text" to={APP_ROUTES.transactionHistory}>Ver historial</Link>
+              </div>
+            </div>
+
+            {activitySyncing ? <p className="dashboard-note">Actualizando actividad...</p> : null}
+            {activitySyncNotice && !activitySyncing ? <p className="dashboard-note">{activitySyncNotice}</p> : null}
+            {activityError ? <p className="dashboard-soft-warning">{activityError}</p> : null}
+
+            {recentActivity.length > 0 ? (
+              <div className="dashboard-activity-list">
+                {recentActivity.map((transaction) => {
+                  const symbol = getActivitySymbol(transaction);
+                  const isIncoming = transaction.direction === "incoming";
+
+                  return (
+                    <article className="dashboard-activity-row" key={transaction.id}>
+                      <span className={`dashboard-activity-icon ${isIncoming ? "incoming" : "outgoing"}`} aria-hidden="true">
+                        {isIncoming ? "IN" : "OUT"}
+                      </span>
+                      <div className="dashboard-activity-main">
+                        <strong>{getDirectionLabel(transaction.direction)}</strong>
+                        <span>{getNetworkLabel(transaction.network)} - {symbol}</span>
+                      </div>
+                      <div className="dashboard-activity-amount">
+                        <strong>{isIncoming ? "+" : "-"}{formatActivityAmount(transaction.amount)} {symbol}</strong>
+                        <span>{formatDate(getTransactionDate(transaction))}</span>
+                      </div>
+                      <div className="dashboard-activity-meta">
+                        <span className={`history-status-pill history-status-pill--${transaction.status || "registered"}`}>
+                          {getStatusLabel(transaction.status)}
+                        </span>
+                        <small>{formatShortHash(transaction.txHash || transaction.signature)}</small>
+                      </div>
+                    </article>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="empty-activity-state dashboard-empty-state">
+                <span aria-hidden="true">TX</span>
+                <strong>Aun no tienes movimientos</strong>
+                <p>Envia, recibe o actualiza actividad para ver tus transacciones.</p>
+              </div>
+            )}
+          </article>
+
+          <article className="dashboard-card dashboard-quick-actions-card">
+            <div className="card-header-row">
+              <div>
+                <h2>Acciones rapidas</h2>
+                <p className="dashboard-note">Atajos principales de la wallet.</p>
+              </div>
+            </div>
+
+            <div className="dashboard-quick-action-grid">
+              {QUICK_ACTIONS.map((action) => (
+                <Link className="dashboard-quick-action" to={action.to} key={action.label}>
+                  <span aria-hidden="true">{action.icon}</span>
+                  <strong>{action.label}</strong>
+                </Link>
+              ))}
+            </div>
+          </article>
+        </section>
       </section>
 
       <section className="mobile-wallet-cta">

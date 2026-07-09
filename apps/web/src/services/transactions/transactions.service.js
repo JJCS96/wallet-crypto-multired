@@ -1,11 +1,13 @@
 import {
   addDoc,
   collection,
+  doc,
   getDocs,
   limit,
   orderBy,
   query,
   serverTimestamp,
+  updateDoc,
   where,
 } from "firebase/firestore";
 import { db } from "../../lib/firebase";
@@ -22,9 +24,9 @@ function getTransactionAssetKey(transaction) {
   return "native";
 }
 
-async function hasTransactionWithHash(uid, transaction) {
+async function findTransactionWithHash(uid, transaction) {
   if (!transaction.txHash) {
-    return false;
+    return null;
   }
 
   const snapshot = await getDocs(
@@ -35,13 +37,14 @@ async function hasTransactionWithHash(uid, transaction) {
     ),
   );
   const nextAssetKey = getTransactionAssetKey(transaction);
-
-  return snapshot.docs.some((document) => {
+  const matchingDocument = snapshot.docs.find((document) => {
     const current = document.data();
 
     return current.network === transaction.network
       && getTransactionAssetKey(current) === nextAssetKey;
   });
+
+  return matchingDocument || null;
 }
 
 export async function createSimulatedTransaction(uid, transaction) {
@@ -222,10 +225,68 @@ export async function getTransactions(uid) {
   return getSimulatedTransactions(uid);
 }
 
-export async function createSyncedTransactionIfMissing(uid, transaction) {
-  const exists = await hasTransactionWithHash(uid, transaction);
+function getTransactionSortTime(transaction) {
+  if (typeof transaction.blockTime === "number") {
+    return transaction.blockTime * 1000;
+  }
 
-  if (exists) {
+  if (transaction.createdAt?.toMillis) {
+    return transaction.createdAt.toMillis();
+  }
+
+  if (transaction.createdAt instanceof Date) {
+    return transaction.createdAt.getTime();
+  }
+
+  if (transaction.createdAt) {
+    const parsed = new Date(transaction.createdAt).getTime();
+    return Number.isNaN(parsed) ? 0 : parsed;
+  }
+
+  return 0;
+}
+
+function getTransactionMergeKey(transaction) {
+  if (transaction.txHash || transaction.signature) {
+    return `${transaction.network}:${transaction.txHash || transaction.signature}`;
+  }
+
+  return transaction.id || `${transaction.network}:${transaction.direction}:${transaction.amount}:${getTransactionSortTime(transaction)}`;
+}
+
+export function mergeTransactions(...transactionLists) {
+  const mergedByKey = new Map();
+
+  transactionLists.flat().filter(Boolean).forEach((transaction) => {
+    const key = getTransactionMergeKey(transaction);
+    const existing = mergedByKey.get(key);
+
+    if (!existing || existing.source !== "blockchain-rpc") {
+      mergedByKey.set(key, transaction);
+    }
+  });
+
+  return Array.from(mergedByKey.values())
+    .sort((left, right) => getTransactionSortTime(right) - getTransactionSortTime(left));
+}
+
+export async function createSyncedTransactionIfMissing(uid, transaction) {
+  const existingDocument = await findTransactionWithHash(uid, transaction);
+
+  if (existingDocument) {
+    const current = existingDocument.data();
+    const nextStatus = transaction.status || current.status;
+    const nextConfirmationStatus = transaction.confirmationStatus || current.confirmationStatus;
+
+    if (current.status !== nextStatus || current.confirmationStatus !== nextConfirmationStatus) {
+      await updateDoc(doc(db, "users", uid, "transactions", existingDocument.id), {
+        status: nextStatus,
+        confirmationStatus: nextConfirmationStatus,
+        explorerUrl: transaction.explorerUrl || current.explorerUrl,
+        updatedAt: serverTimestamp(),
+      });
+    }
+
     return null;
   }
 
@@ -256,6 +317,10 @@ export async function createSyncedTransactionIfMissing(uid, transaction) {
 
   if (transaction.assetType === "token") {
     payload.tokenStandard = transaction.tokenStandard;
+    payload.tokenSymbol = transaction.tokenSymbol;
+  }
+
+  if (transaction.assetType !== "token" && transaction.tokenSymbol) {
     payload.tokenSymbol = transaction.tokenSymbol;
   }
 
