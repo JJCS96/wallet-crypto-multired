@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import AppShell from "../components/layout/AppShell";
 import TransactionSummaryCard from "../components/transactions/TransactionSummaryCard";
 import WalletEmptyState from "../components/wallet/WalletEmptyState";
@@ -69,6 +70,45 @@ function getWalletAddressForNetwork(wallet, networkId) {
   return "";
 }
 
+function normalizeBalanceResult(result) {
+  return {
+    balance: result.balance,
+    balanceLamports: typeof result.balanceLamports === "number" ? BigInt(result.balanceLamports) : null,
+    balanceWei: typeof result.balanceWei === "string" ? BigInt(result.balanceWei) : null,
+    balanceSatoshis: typeof result.balanceSatoshis === "number" ? BigInt(result.balanceSatoshis) : null,
+    balanceUnits: typeof result.balanceUnits === "string" ? BigInt(result.balanceUnits) : null,
+    source: result.source || "simulated",
+    error: result.error || "",
+  };
+}
+
+function formatCryptoAmount(value, symbol) {
+  const numericValue = Number(value);
+
+  if (!Number.isFinite(numericValue)) {
+    return `0 ${symbol}`;
+  }
+
+  return `${numericValue.toFixed(9).replace(/0+$/, "").replace(/\.$/, "")} ${symbol}`;
+}
+
+function formatTransactionHash(value) {
+  if (!value) {
+    return "sin hash";
+  }
+
+  return `${value.slice(0, 8)}...${value.slice(-6)}`;
+}
+
+function getResultHash(result) {
+  return result?.signature || result?.txHash || "";
+}
+
+function isInsufficientFundsError(error) {
+  const message = String(error?.message || error || "").toLowerCase();
+  return message.includes("insufficient") || message.includes("exceeds the balance");
+}
+
 function SendTransaction({ user }) {
   const [wallet, setWallet] = useState(null);
   const [walletLoading, setWalletLoading] = useState(true);
@@ -84,12 +124,9 @@ function SendTransaction({ user }) {
   const [vaultAvailable, setVaultAvailable] = useState(false);
   const [vaultLoading, setVaultLoading] = useState(true);
   const [availableBalance, setAvailableBalance] = useState(null);
-  const [availableBalanceLamports, setAvailableBalanceLamports] = useState(null);
-  const [availableBalanceWei, setAvailableBalanceWei] = useState(null);
-  const [availableBalanceSatoshis, setAvailableBalanceSatoshis] = useState(null);
-  const [availableBalanceUnits, setAvailableBalanceUnits] = useState(null);
   const [balanceSource, setBalanceSource] = useState("simulated");
   const [balanceError, setBalanceError] = useState("");
+  const [balanceRefreshKey, setBalanceRefreshKey] = useState(0);
   const [lastTransactionResult, setLastTransactionResult] = useState(null);
 
   useEffect(() => {
@@ -149,23 +186,12 @@ function SendTransaction({ user }) {
 
     async function loadBalance() {
       const result = await getBalanceByNetwork(networkId, wallet, assetId);
+      const normalizedResult = normalizeBalanceResult(result);
 
       if (isMounted) {
-        setAvailableBalance(result.balance);
-        setAvailableBalanceLamports(
-          typeof result.balanceLamports === "number" ? BigInt(result.balanceLamports) : null,
-        );
-        setAvailableBalanceWei(
-          typeof result.balanceWei === "string" ? BigInt(result.balanceWei) : null,
-        );
-        setAvailableBalanceSatoshis(
-          typeof result.balanceSatoshis === "number" ? BigInt(result.balanceSatoshis) : null,
-        );
-        setAvailableBalanceUnits(
-          typeof result.balanceUnits === "string" ? BigInt(result.balanceUnits) : null,
-        );
-        setBalanceSource(result.source || "simulated");
-        setBalanceError(result.error || "");
+        setAvailableBalance(normalizedResult.balance);
+        setBalanceSource(normalizedResult.source);
+        setBalanceError(normalizedResult.error);
       }
     }
 
@@ -174,7 +200,7 @@ function SendTransaction({ user }) {
     return () => {
       isMounted = false;
     };
-  }, [assetId, networkId, wallet]);
+  }, [assetId, networkId, wallet, balanceRefreshKey]);
 
   const currentNetwork = NETWORKS[networkId];
   const currentAsset = getAssetById(assetId);
@@ -201,6 +227,25 @@ function SendTransaction({ user }) {
     setSuccessMessage("");
     setFormError("");
     setWalletPassword("");
+  }
+
+  async function saveConfirmedTransactionMetadata(saveTransaction, { result, networkLabel, amountLabel }) {
+    const hash = getResultHash(result);
+
+    try {
+      await saveTransaction();
+      setSuccessMessage(
+        `Transacción confirmada en ${networkLabel}: ${amountLabel}. Hash: ${formatTransactionHash(hash)}.`,
+      );
+    } catch {
+      setSuccessMessage(
+        `La transacción fue confirmada en ${networkLabel}: ${amountLabel}. Hash: ${formatTransactionHash(hash)}. No se pudo guardar inmediatamente en Firestore; puedes verificarla en el Explorer.`,
+      );
+    }
+
+    setFormError("");
+    setLastTransactionResult(result);
+    setBalanceRefreshKey((current) => current + 1);
   }
 
   function handleNetworkChange(nextNetworkId) {
@@ -341,6 +386,22 @@ function SendTransaction({ user }) {
     if (assetId === ASSET_IDS.bnbNative) {
       try {
         amountWei = parseBnbAmountToWei(amount);
+        const bnbBalanceResult = normalizeBalanceResult(await getBalanceByNetwork(networkId, wallet, assetId));
+
+        setAvailableBalance(bnbBalanceResult.balance);
+        setBalanceSource(bnbBalanceResult.source);
+        setBalanceError(bnbBalanceResult.error);
+
+        if (bnbBalanceResult.error) {
+          setFormError(bnbBalanceResult.error);
+          return;
+        }
+
+        if (typeof bnbBalanceResult.balanceWei !== "bigint" || amountWei >= bnbBalanceResult.balanceWei) {
+          setFormError("Saldo tBNB insuficiente para cubrir el envío y la comisión de gas.");
+          return;
+        }
+
         const realNetworkFee = await estimateBnbTransferFee({
           fromAddress,
           toAddress: toAddress.trim(),
@@ -369,6 +430,11 @@ function SendTransaction({ user }) {
 
         if (error?.message === "invalid-bnb-amount") {
           setFormError("Ingresa un monto válido de tBNB.");
+          return;
+        }
+
+        if (isInsufficientFundsError(error)) {
+          setFormError("Saldo tBNB insuficiente para cubrir el envío y la comisión de gas.");
           return;
         }
 
@@ -472,59 +538,79 @@ function SendTransaction({ user }) {
       }
     }
 
-    if (networkId === "solana" && balanceError) {
+    const latestBalanceResult = normalizeBalanceResult(await getBalanceByNetwork(networkId, wallet, assetId));
+    const validationBalance = latestBalanceResult.balance;
+    const validationBalanceLamports = latestBalanceResult.balanceLamports;
+    const validationBalanceWei = latestBalanceResult.balanceWei;
+    const validationBalanceSatoshis = latestBalanceResult.balanceSatoshis;
+    const validationBalanceUnits = latestBalanceResult.balanceUnits;
+    const validationBalanceError = latestBalanceResult.error;
+
+    setAvailableBalance(validationBalance);
+    setBalanceSource(latestBalanceResult.source);
+    setBalanceError(validationBalanceError);
+
+    if (networkId === "solana" && validationBalanceError) {
       setFormError("No se pudo consultar el balance real de Solana Devnet. Intenta nuevamente en unos segundos.");
       return;
     }
 
-    if (networkId === "bnb" && balanceError) {
-      setFormError(balanceError);
+    if (networkId === "bnb" && validationBalanceError) {
+      setFormError(validationBalanceError);
       return;
     }
 
-    if (networkId === "bitcoin" && balanceError) {
+    if (networkId === "bitcoin" && validationBalanceError) {
       setFormError("Balance no disponible. No se puede validar ni preparar un envío Bitcoin Testnet en este momento.");
       return;
     }
 
-    if (typeof availableBalance !== "number") {
+    if (typeof validationBalance !== "number") {
       setFormError("No hay un balance disponible para validar esta operación.");
       return;
     }
 
-    if (assetId === ASSET_IDS.solanaNative && typeof availableBalanceLamports !== "bigint") {
+    if (assetId === ASSET_IDS.solanaNative && typeof validationBalanceLamports !== "bigint") {
       setFormError("No hay un balance real de Solana disponible para validar esta operación.");
       return;
     }
 
-    if (assetId === ASSET_IDS.bnbNative && typeof availableBalanceWei !== "bigint") {
+    if (assetId === ASSET_IDS.bnbNative && typeof validationBalanceWei !== "bigint") {
       setFormError("No hay un balance real de BNB Smart Chain Testnet disponible para validar esta operación.");
       return;
     }
 
-    if (assetId === ASSET_IDS.bitcoinNative && typeof availableBalanceSatoshis !== "bigint") {
+    if (assetId === ASSET_IDS.bitcoinNative && typeof validationBalanceSatoshis !== "bigint") {
       setFormError("Balance no disponible. No hay UTXOs Bitcoin Testnet para validar esta operación.");
       return;
     }
 
-    if (isTokenAsset && typeof availableBalanceUnits !== "bigint") {
+    if (isTokenAsset && typeof validationBalanceUnits !== "bigint") {
       setFormError("No hay un balance real del token demo para validar esta operación.");
       return;
     }
 
     const hasInsufficientBalance = assetId === ASSET_IDS.solanaNative
-      ? feeBreakdown.totalDebitLamports > availableBalanceLamports
+      ? feeBreakdown.totalDebitLamports > validationBalanceLamports
       : assetId === ASSET_IDS.bnbNative
-        ? amountWei + BigInt(feeBreakdown.networkFeeWei) > availableBalanceWei
+        ? amountWei + BigInt(feeBreakdown.networkFeeWei) > validationBalanceWei
         : assetId === ASSET_IDS.bitcoinNative
-          ? amountSatoshis + BigInt(feeBreakdown.networkFeeSatoshis) > availableBalanceSatoshis
+          ? amountSatoshis + BigInt(feeBreakdown.networkFeeSatoshis) > validationBalanceSatoshis
           : isTokenAsset
-            ? amountUnits > availableBalanceUnits
-          : feeBreakdown.totalDebit > availableBalance;
+            ? amountUnits > validationBalanceUnits
+          : feeBreakdown.totalDebit > validationBalance;
 
     if (hasInsufficientBalance) {
+      const requiredAmount = assetId === ASSET_IDS.solanaNative
+        ? lamportsToSolNumber(feeBreakdown.totalDebitLamports)
+        : assetId === ASSET_IDS.bnbNative
+          ? weiToBnbNumber(amountWei + BigInt(feeBreakdown.networkFeeWei))
+          : assetId === ASSET_IDS.bitcoinNative
+            ? Number(amountSatoshis + BigInt(feeBreakdown.networkFeeSatoshis)) / 100_000_000
+          : normalizedAmount;
+
       setFormError(
-        `Saldo insuficiente. Balance disponible: ${availableBalance} ${currentAsset.symbol}.`,
+        `Saldo insuficiente. Disponible: ${formatCryptoAmount(validationBalance, currentAsset.symbol)}. Requerido aproximado: ${formatCryptoAmount(requiredAmount, currentAsset.symbol)}.`,
       );
       return;
     }
@@ -566,8 +652,8 @@ function SendTransaction({ user }) {
       totalDebitLamports: feeBreakdown.totalDebitLamports?.toString() || null,
       chainId: networkId === "bnb" ? BNB_TESTNET_CHAIN_ID : null,
       adminWallet: isTokenAsset || networkId === "bitcoin" ? "No aplica en este activo" : ADMIN_WALLETS[networkId],
-      availableBalance,
-      balanceSource,
+      availableBalance: validationBalance,
+      balanceSource: latestBalanceResult.source,
     });
   }
 
@@ -616,7 +702,7 @@ function SendTransaction({ user }) {
         });
         const networkFeeLamports = result.networkFeeLamports ?? BigInt(preview.networkFeeLamports);
 
-        await createRealDevnetTransaction(user.uid, {
+        await saveConfirmedTransactionMetadata(() => createRealDevnetTransaction(user.uid, {
           ...preview,
           networkFee: typeof result.networkFee === "number" ? result.networkFee : preview.networkFee,
           totalDebit: lamportsToSolNumber(
@@ -629,10 +715,12 @@ function SendTransaction({ user }) {
           blockTime: result.blockTime,
           confirmationStatus: result.confirmationStatus,
           appFeeMode: "on-chain",
+        }), {
+          result,
+          networkLabel: "Solana Devnet",
+          amountLabel: formatCryptoAmount(preview.amount, preview.symbol),
         });
 
-        setLastTransactionResult(result);
-        setSuccessMessage("La transacción real en Solana Devnet y la Comisión NovaWallet on-chain fueron confirmadas correctamente.");
       } else if (preview.assetId === ASSET_IDS.solanaSplDemo) {
         const result = await sendSignedSplDemoTransfer({
           mnemonic: unlockedVault.mnemonic,
@@ -641,7 +729,7 @@ function SendTransaction({ user }) {
           amountUnits: BigInt(preview.amountUnits),
         });
 
-        await createRealTokenTransaction(user.uid, {
+        await saveConfirmedTransactionMetadata(() => createRealTokenTransaction(user.uid, {
           ...preview,
           networkFee: typeof result.networkFee === "number" ? result.networkFee : preview.networkFee,
           totalDebit: preview.amount,
@@ -654,10 +742,12 @@ function SendTransaction({ user }) {
           mode: "real-devnet",
           tokenMint: result.tokenMint,
           tokenSymbol: result.tokenSymbol,
+        }), {
+          result,
+          networkLabel: "Solana Devnet",
+          amountLabel: formatCryptoAmount(preview.amount, preview.symbol),
         });
 
-        setLastTransactionResult(result);
-        setSuccessMessage("La transacción SPL Demo en Solana Devnet fue confirmada correctamente.");
       } else if (preview.assetId === ASSET_IDS.bnbNative) {
         const result = await sendSignedBnbTransfer({
           mnemonic: unlockedVault.mnemonic,
@@ -666,7 +756,7 @@ function SendTransaction({ user }) {
           amountWei: BigInt(preview.amountWei),
         });
 
-        await createRealBnbTestnetTransaction(user.uid, {
+        await saveConfirmedTransactionMetadata(() => createRealBnbTestnetTransaction(user.uid, {
           ...preview,
           chainId: result.chainId,
           networkFee: result.networkFee,
@@ -678,10 +768,12 @@ function SendTransaction({ user }) {
           explorerUrl: result.explorerUrl,
           confirmationStatus: result.confirmationStatus,
           appFeeMode: "documented",
+        }), {
+          result,
+          networkLabel: "BNB Smart Chain Testnet",
+          amountLabel: formatCryptoAmount(preview.amount, preview.symbol),
         });
 
-        setLastTransactionResult(result);
-        setSuccessMessage("La transacción real en BNB Smart Chain Testnet fue confirmada correctamente.");
       } else if (preview.assetId === ASSET_IDS.bnbBep20Demo) {
         const result = await sendSignedBep20DemoTransfer({
           mnemonic: unlockedVault.mnemonic,
@@ -690,7 +782,7 @@ function SendTransaction({ user }) {
           amountUnits: BigInt(preview.amountUnits),
         });
 
-        await createRealTokenTransaction(user.uid, {
+        await saveConfirmedTransactionMetadata(() => createRealTokenTransaction(user.uid, {
           ...preview,
           networkFee: result.networkFee,
           totalDebit: preview.amount,
@@ -704,10 +796,12 @@ function SendTransaction({ user }) {
           mode: "real-testnet",
           tokenAddress: result.tokenAddress,
           tokenSymbol: result.tokenSymbol,
+        }), {
+          result,
+          networkLabel: "BNB Smart Chain Testnet",
+          amountLabel: formatCryptoAmount(preview.amount, preview.symbol),
         });
 
-        setLastTransactionResult(result);
-        setSuccessMessage("La transacción BEP20 Demo en BNB Smart Chain Testnet fue confirmada correctamente.");
       } else if (preview.assetId === ASSET_IDS.bitcoinNative) {
         const result = await sendSignedBitcoinTestnetTransfer({
           mnemonic: unlockedVault.mnemonic,
@@ -716,7 +810,7 @@ function SendTransaction({ user }) {
           amountSatoshis: BigInt(preview.amountSatoshis),
         });
 
-        await createRealBitcoinTestnetTransaction(user.uid, {
+        await saveConfirmedTransactionMetadata(() => createRealBitcoinTestnetTransaction(user.uid, {
           ...preview,
           networkFee: result.networkFee,
           feeRate: result.feeRate,
@@ -726,10 +820,12 @@ function SendTransaction({ user }) {
           explorerUrl: result.explorerUrl,
           confirmationStatus: result.confirmationStatus,
           appFeeMode: "pending",
+        }), {
+          result,
+          networkLabel: "Bitcoin Testnet",
+          amountLabel: formatCryptoAmount(preview.amount, preview.symbol),
         });
 
-        setLastTransactionResult(result);
-        setSuccessMessage("La transacción real en Bitcoin Testnet fue transmitida correctamente.");
       } else {
         await createSimulatedTransaction(user.uid, preview);
         setSuccessMessage("La transacción simulada quedó registrada en Firestore.");
@@ -772,6 +868,8 @@ function SendTransaction({ user }) {
         setFormError("Saldo insuficiente del token demo seleccionado.");
       } else if (error?.message === "insufficient-gas-funds") {
         setFormError("Saldo insuficiente para pagar la comisión de red del envío token.");
+      } else if (preview?.assetId === ASSET_IDS.bnbNative && isInsufficientFundsError(error)) {
+        setFormError("Saldo tBNB insuficiente para cubrir el envío y la comisión de gas.");
       } else if (String(error?.message || "").toLowerCase().includes("insufficient")) {
         setFormError("Saldo insuficiente para cubrir el envío y la comisión de red.");
       } else {
@@ -891,16 +989,21 @@ function SendTransaction({ user }) {
           <article className="placeholder-card">
             {formError ? <div className="auth-error">{formError}</div> : null}
             {successMessage ? <div className="auth-success">{successMessage}</div> : null}
-            {lastTransactionResult?.explorerUrl ? (
+            {successMessage ? (
               <div className="placeholder-actions" style={{ marginBottom: "18px" }}>
-                <a
-                  className="auth-button auth-button-link"
-                  href={lastTransactionResult.explorerUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  Ver en explorer
-                </a>
+                {lastTransactionResult?.explorerUrl ? (
+                  <a
+                    className="auth-button auth-button-link"
+                    href={lastTransactionResult.explorerUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    Ver en explorer
+                  </a>
+                ) : null}
+                <Link className="auth-button-secondary" to={APP_ROUTES.transactionHistory}>
+                  Ver historial
+                </Link>
               </div>
             ) : null}
 

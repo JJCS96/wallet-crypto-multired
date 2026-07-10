@@ -1,7 +1,8 @@
 import { useState } from "react";
 
-function SeedPhraseCard({ words }) {
+function SeedPhraseCard({ words, children }) {
   const [copyStatus, setCopyStatus] = useState("");
+  const [phraseHidden, setPhraseHidden] = useState(false);
 
   async function handleCopyPhrase() {
     if (!navigator.clipboard) {
@@ -19,12 +20,22 @@ function SeedPhraseCard({ words }) {
 
   return (
     <article className="placeholder-card placeholder-card--accent wallet-auth-card wallet-onboarding-card seed-phrase-wallet-card">
-      <div className="seed-card-badge">Generada localmente</div>
+      <div className="seed-card-header">
+        <span className="seed-card-badge">Generada localmente</span>
+        <button
+          className="auth-button-secondary seed-visibility-toggle"
+          type="button"
+          onClick={() => setPhraseHidden((currentState) => !currentState)}
+        >
+          {phraseHidden ? "Mostrar frase" : "Ocultar frase"}
+        </button>
+      </div>
+
       <p className="placeholder-kicker">Frase de recuperación</p>
-      <h2 className="placeholder-title">Tus 12 palabras</h2>
+      <h2 className="placeholder-title">Guarda tus 12 palabras</h2>
       <p className="placeholder-copy">
-        Esta frase es la única manera de recuperar tu billetera. NovaWallet no la guarda en Firebase
-        ni en el navegador.
+        Esta frase es la única manera de recuperar tu wallet. NovaWallet no la guarda en Firebase ni
+        en el navegador.
       </p>
 
       <div className="seed-secret-warning">
@@ -32,24 +43,23 @@ function SeedPhraseCard({ words }) {
         <span>Si alguien tiene estas palabras, puede controlar tu wallet.</span>
       </div>
 
-      <div className="seed-word-grid">
+      <div className="seed-word-grid" aria-label="Frase de recuperación de 12 palabras">
         {words.map((word, index) => (
           <div className="seed-word-item" key={`${index + 1}-${word}`}>
-            <span>
-              {index + 1}
-            </span>
-            <strong>{word}</strong>
+            <span>{index + 1}</span>
+            <strong>{phraseHidden ? "••••••" : word}</strong>
           </div>
         ))}
       </div>
 
-      <div className="placeholder-actions" style={{ marginTop: "18px" }}>
+      <div className="placeholder-actions seed-card-actions">
         <button className="auth-button-secondary wallet-secondary-btn" type="button" onClick={handleCopyPhrase}>
           Copiar frase
         </button>
+        {children}
       </div>
 
-      {copyStatus ? <p className="wallet-seed-counter wallet-seed-copy-status">{copyStatus}</p> : null}
+      {copyStatus ? <p className="wallet-seed-counter wallet-seed-copy-status" aria-live="polite">{copyStatus}</p> : null}
     </article>
   );
 }

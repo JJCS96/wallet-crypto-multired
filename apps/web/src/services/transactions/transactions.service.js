@@ -254,6 +254,72 @@ function getTransactionMergeKey(transaction) {
   return transaction.id || `${transaction.network}:${transaction.direction}:${transaction.amount}:${getTransactionSortTime(transaction)}`;
 }
 
+const BLOCKCHAIN_CONFIRMATION_FIELDS = [
+  "status",
+  "confirmationStatus",
+  "explorerUrl",
+  "blockTime",
+  "slot",
+  "chainId",
+  "gasUsed",
+  "gasPrice",
+  "feeRate",
+  "updatedAt",
+];
+
+function isAppSendTransaction(transaction) {
+  return transaction?.source === "app-send";
+}
+
+function isBlockchainTransaction(transaction) {
+  return transaction?.source === "blockchain-rpc" || transaction?.source === "blockchain-sync";
+}
+
+function hasMergeValue(value) {
+  return value !== undefined && value !== null && value !== "";
+}
+
+function getBlockchainConfirmationPatch(transaction) {
+  return BLOCKCHAIN_CONFIRMATION_FIELDS.reduce((patch, field) => {
+    if (hasMergeValue(transaction?.[field])) {
+      patch[field] = transaction[field];
+    }
+
+    return patch;
+  }, {});
+}
+
+function mergeAppSendWithBlockchain(appTransaction, blockchainTransaction) {
+  return {
+    ...appTransaction,
+    ...getBlockchainConfirmationPatch(blockchainTransaction),
+    source: "app-send",
+  };
+}
+
+function mergeDuplicateTransaction(existing, transaction) {
+  if (isAppSendTransaction(existing) && isBlockchainTransaction(transaction)) {
+    return mergeAppSendWithBlockchain(existing, transaction);
+  }
+
+  if (isAppSendTransaction(transaction) && isBlockchainTransaction(existing)) {
+    return mergeAppSendWithBlockchain(transaction, existing);
+  }
+
+  if (isAppSendTransaction(existing)) {
+    return existing;
+  }
+
+  if (isAppSendTransaction(transaction)) {
+    return transaction;
+  }
+
+  return {
+    ...existing,
+    ...transaction,
+  };
+}
+
 export function mergeTransactions(...transactionLists) {
   const mergedByKey = new Map();
 
@@ -261,9 +327,12 @@ export function mergeTransactions(...transactionLists) {
     const key = getTransactionMergeKey(transaction);
     const existing = mergedByKey.get(key);
 
-    if (!existing || existing.source !== "blockchain-rpc") {
+    if (!existing) {
       mergedByKey.set(key, transaction);
+      return;
     }
+
+    mergedByKey.set(key, mergeDuplicateTransaction(existing, transaction));
   });
 
   return Array.from(mergedByKey.values())

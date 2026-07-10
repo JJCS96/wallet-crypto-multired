@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import AppShell from "../components/layout/AppShell";
-import SecurityNotice from "../components/security/SecurityNotice";
 import SeedPhraseCard from "../components/wallet/SeedPhraseCard";
 import WalletCreationSummary from "../components/wallet/WalletCreationSummary";
 import WalletEmptyState from "../components/wallet/WalletEmptyState";
@@ -147,7 +146,14 @@ function CreateWallet({ user }) {
         />
       ) : flow?.stage === WALLET_FLOW_STAGES.seedVisible ? (
         <section className="placeholder-page wallet-onboarding-page wallet-onboarding-page--wide">
-          <SeedPhraseCard key={flow.createdAt} words={flow.words} />
+          <SeedPhraseCard key={flow.createdAt} words={flow.words}>
+            <button className="auth-button wallet-primary-btn" type="button" onClick={handleContinueToBackup}>
+              Ya la guardé, continuar
+            </button>
+            <button className="auth-button-secondary wallet-secondary-btn" type="button" onClick={handleDiscardCurrentFlow}>
+              Descartar y generar otra
+            </button>
+          </SeedPhraseCard>
 
           <article className="placeholder-card wallet-auth-card wallet-onboarding-card wallet-seed-guidance-card">
             <div className="wallet-auth-topbar">
@@ -160,10 +166,10 @@ function CreateWallet({ user }) {
                 <span />
               </div>
             </div>
-            <p className="placeholder-kicker">Frase de recuperación</p>
-            <h2 className="placeholder-title">Guarda tus 12 palabras antes de continuar</h2>
+            <p className="placeholder-kicker">Respaldo seguro</p>
+            <h2 className="placeholder-title">Antes de continuar</h2>
             <p className="placeholder-copy">
-              Esta frase de recuperación crea tu wallet. NovaWallet no la guarda en Firebase ni en el navegador.
+              Guarda la frase en el mismo orden y confirma el respaldo en el siguiente paso.
             </p>
             <div className="wallet-process-card wallet-process-card--dark">
               <p className="wallet-process-card__title">Pasos para dejar tu billetera lista</p>
@@ -175,13 +181,12 @@ function CreateWallet({ user }) {
                 <span>Crear direcciones públicas</span>
                 <span>Guardar solo direcciones públicas</span>
               </div>
-              <p className="dashboard-note auth-process-card__note">
-                NovaWallet genera la billetera completamente en tu navegador. Nunca almacena frase
-                de recuperación ni claves privadas.
-              </p>
             </div>
-            <SecurityNotice type="seed-backup" style={{ marginTop: "18px", marginBottom: 0 }} />
-            <SecurityNotice type="sensitive-data" style={{ marginTop: "18px", marginBottom: 0 }} />
+            <div className="wallet-seed-security-list">
+              <p>NovaWallet nunca guarda tu frase semilla en Firebase.</p>
+              <p>Si pierdes esta frase, no podremos recuperar tu wallet.</p>
+              <p>Nunca compartas esta frase con nadie.</p>
+            </div>
 
             {error ? (
               <div className="auth-error" style={{ marginTop: "18px" }}>
@@ -189,14 +194,6 @@ function CreateWallet({ user }) {
               </div>
             ) : null}
 
-            <div className="placeholder-actions" style={{ marginTop: "22px" }}>
-              <button className="auth-button" type="button" onClick={handleContinueToBackup}>
-                Ya la guardé, continuar
-              </button>
-              <button className="auth-button-secondary" type="button" onClick={handleDiscardCurrentFlow}>
-                Descartar y generar otra
-              </button>
-            </div>
           </article>
         </section>
       ) : error ? (

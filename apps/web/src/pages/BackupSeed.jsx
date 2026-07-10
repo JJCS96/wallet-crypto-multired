@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import AppShell from "../components/layout/AppShell";
-import SecurityNotice from "../components/security/SecurityNotice";
 import SeedPhraseCard from "../components/wallet/SeedPhraseCard";
 import WalletEmptyState from "../components/wallet/WalletEmptyState";
 import { APP_ROUTES } from "../constants/routes";
@@ -105,9 +104,30 @@ function BackupSeed({ user }) {
         </section>
       ) : flow ? (
         <section className="placeholder-page wallet-onboarding-page wallet-onboarding-page--wide">
-          <SeedPhraseCard key={flow.createdAt} words={flow.words} />
+          <SeedPhraseCard key={flow.createdAt} words={flow.words}>
+            <label className="wallet-recovery-checkbox" htmlFor="recovery-phrase-saved">
+              <input
+                id="recovery-phrase-saved"
+                type="checkbox"
+                checked={hasSavedRecoveryPhrase}
+                onChange={(event) => setHasSavedRecoveryPhrase(event.target.checked)}
+              />
+              <span>He guardado mi frase de recuperación</span>
+            </label>
+            <button
+              className="auth-button wallet-primary-btn"
+              type="button"
+              disabled={!hasSavedRecoveryPhrase}
+              onClick={() => navigate(APP_ROUTES.confirmSeed)}
+            >
+              Ya la guardé, continuar
+            </button>
+            <button className="auth-button-secondary wallet-secondary-btn" type="button" onClick={handleDiscardAndRestart}>
+              Descartar y generar otra
+            </button>
+          </SeedPhraseCard>
 
-          <article className="placeholder-card placeholder-card--accent wallet-auth-card wallet-onboarding-card">
+          <article className="placeholder-card wallet-auth-card wallet-onboarding-card wallet-seed-guidance-card">
             <div className="wallet-auth-topbar">
               <button className="wallet-back-button" type="button" onClick={() => navigate(APP_ROUTES.createWallet)} aria-label="Volver a crear billetera">
                 ←
@@ -118,54 +138,36 @@ function BackupSeed({ user }) {
                 <span />
               </div>
             </div>
-            <p className="placeholder-kicker">Frase de recuperación</p>
-            <h2 className="placeholder-title">Guárdala antes de continuar</h2>
+            <p className="placeholder-kicker">Respaldo seguro</p>
+            <h2 className="placeholder-title">Confirma tu respaldo</h2>
             <p className="placeholder-copy">
-              Esta frase es la ÚNICA manera de recuperar tu billetera. No la compartas con nadie.
+              Guarda tus 12 palabras en orden y marca la confirmación cuando estén fuera de NovaWallet.
             </p>
-            <SecurityNotice type="seed-backup" style={{ marginTop: "18px", marginBottom: 0 }} />
-            <div className="wallet-warning-card">
+            <div className="wallet-process-card wallet-process-card--dark">
+              <p className="wallet-process-card__title">Pasos para dejar tu billetera lista</p>
+              <div className="wallet-process-flow">
+                <span className="complete">Crear billetera</span>
+                <span className="complete">Generar frase de recuperación</span>
+                <span className="active">Guardar frase de recuperación</span>
+                <span>Confirmar respaldo</span>
+                <span>Crear direcciones públicas</span>
+                <span>Guardar solo direcciones públicas</span>
+              </div>
+            </div>
+            <div className="wallet-seed-security-list">
+              <p>NovaWallet nunca guarda tu frase semilla en Firebase.</p>
+              <p>Si pierdes esta frase, no podremos recuperar tu wallet.</p>
+              <p>Nunca compartas esta frase con nadie.</p>
+            </div>
+            <div className="wallet-warning-card wallet-warning-card--dark">
               <strong>Importante</strong>
-              <p>
-                Nunca compartas esta frase. Cualquier persona con estas palabras puede acceder a tu wallet.
-              </p>
+              <p>Cualquier persona con estas palabras puede controlar tu wallet.</p>
             </div>
             {error ? (
               <div className="auth-error" style={{ marginTop: "18px" }}>
                 {error}
               </div>
             ) : null}
-          </article>
-
-          <article className="placeholder-card wallet-auth-card wallet-onboarding-card">
-            <WalletEmptyState
-              title="Confirma tu respaldo"
-              description="Marca la casilla cuando hayas guardado tus 12 palabras en un lugar seguro fuera de NovaWallet."
-              badge="Sin persistencia sensible"
-              steps={[
-                "Guarda la frase de recuperación en un lugar fuera del navegador.",
-                "No la compartas con nadie ni la envíes por correo.",
-                "El siguiente paso validará algunas palabras del respaldo.",
-              ]}
-            >
-              <label className="wallet-recovery-checkbox" htmlFor="recovery-phrase-saved">
-                <input
-                  id="recovery-phrase-saved"
-                  type="checkbox"
-                  checked={hasSavedRecoveryPhrase}
-                  onChange={(event) => setHasSavedRecoveryPhrase(event.target.checked)}
-                />
-                <span>He guardado mi frase de recuperación</span>
-              </label>
-              <div className="placeholder-actions" style={{ marginTop: "18px" }}>
-                <button className="auth-button wallet-primary-btn" type="button" disabled={!hasSavedRecoveryPhrase} onClick={() => navigate(APP_ROUTES.confirmSeed)}>
-                  Continuar
-                </button>
-                <button className="auth-button-secondary wallet-secondary-btn" type="button" onClick={handleDiscardAndRestart}>
-                  Descartar y generar otra
-                </button>
-              </div>
-            </WalletEmptyState>
           </article>
         </section>
       ) : (

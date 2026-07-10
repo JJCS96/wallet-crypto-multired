@@ -46,6 +46,56 @@ function formatDate(value) {
   });
 }
 
+function formatRelativeUpdateTime(value) {
+  if (!value) {
+    return "";
+  }
+
+  const updatedAt = new Date(value);
+
+  if (Number.isNaN(updatedAt.getTime())) {
+    return "";
+  }
+
+  const diffMs = Date.now() - updatedAt.getTime();
+  const diffMinutes = Math.max(0, Math.floor(diffMs / 60000));
+
+  if (diffMinutes < 1) {
+    return "hace unos segundos";
+  }
+
+  if (diffMinutes === 1) {
+    return "hace 1 minuto";
+  }
+
+  if (diffMinutes < 60) {
+    return `hace ${diffMinutes} minutos`;
+  }
+
+  const diffHours = Math.floor(diffMinutes / 60);
+  return diffHours === 1 ? "hace 1 hora" : `hace ${diffHours} horas`;
+}
+
+function getBalanceStatusLabel(status) {
+  if (status === "ready") {
+    return "Balance actualizado";
+  }
+
+  if (status === "partial") {
+    return "Balance parcial";
+  }
+
+  if (status === "updating") {
+    return "Actualizando...";
+  }
+
+  if (status === "error") {
+    return "Balance no disponible";
+  }
+
+  return "Cargando balance...";
+}
+
 function getTransactionDate(transaction) {
   if (transaction.createdAt) {
     return transaction.createdAt;
@@ -122,9 +172,20 @@ function formatShortHash(value) {
   return `${value.slice(0, 8)}...${value.slice(-6)}`;
 }
 
-function parseAssetAmount(value = "") {
-  const parsed = Number.parseFloat(String(value).replace(/,/g, ""));
-  return Number.isFinite(parsed) ? parsed : 0;
+function formatDistributionPercent(percent) {
+  if (!Number.isFinite(percent) || percent <= 0) {
+    return "0%";
+  }
+
+  if (percent < 1) {
+    return "<1%";
+  }
+
+  if (percent >= 10) {
+    return `${Math.round(percent)}%`;
+  }
+
+  return `${percent.toFixed(1).replace(/\.0$/, "")}%`;
 }
 
 function normalizeActivityError(message) {
@@ -147,6 +208,28 @@ function normalizeActivityError(message) {
   return message;
 }
 
+function getActivityStatusLabel({ syncing, loaded, error, notice }) {
+  const normalizedNotice = String(notice || "").toLowerCase();
+
+  if (syncing) {
+    return "Sincronizando...";
+  }
+
+  if (error) {
+    return "No se pudo actualizar toda la actividad";
+  }
+
+  if (normalizedNotice.includes("parcial")) {
+    return "Actividad cargada parcialmente";
+  }
+
+  if (loaded) {
+    return "Actividad actualizada";
+  }
+
+  return "Sincronizando...";
+}
+
 function buildPortfolioTrend(totalUsd) {
   const base = typeof totalUsd === "number" && totalUsd > 0 ? totalUsd : 220;
   const multipliers = [0.72, 0.78, 0.75, 0.86, 0.91, 0.88, 1];
@@ -157,29 +240,38 @@ function buildPortfolioTrend(totalUsd) {
   }));
 }
 
-function buildDistribution(nativeBalanceSummary) {
-  const source = nativeBalanceSummary.length > 0
-    ? nativeBalanceSummary
+function buildDistribution(nativeAssetDistribution = []) {
+  const source = nativeAssetDistribution.length > 0
+    ? nativeAssetDistribution
     : [
-      { label: "SOL", value: "1 SOL" },
-      { label: "tBNB", value: "1 tBNB" },
-      { label: "BTC", value: "1 BTC" },
+      { label: "SOL", valueUsd: 0 },
+      { label: "tBNB", valueUsd: 0 },
+      { label: "BTC", valueUsd: 0 },
     ];
   const entries = source.map((asset) => ({
     label: asset.label,
-    value: parseAssetAmount(asset.value),
-    color: ASSET_COLORS[asset.label] || "#8b5cf6",
+    valueUsd: typeof asset.valueUsd === "number" && Number.isFinite(asset.valueUsd) && asset.valueUsd > 0
+      ? asset.valueUsd
+      : 0,
+    color: asset.color || ASSET_COLORS[asset.label] || "#8b5cf6",
   }));
-  const total = entries.reduce((sum, item) => sum + item.value, 0);
-  const safeEntries = total > 0
-    ? entries
-    : entries.map((item) => ({ ...item, value: 1 }));
-  const safeTotal = safeEntries.reduce((sum, item) => sum + item.value, 0);
+  const totalValue = entries.reduce((sum, item) => sum + item.valueUsd, 0);
+  const hasValue = totalValue > 0;
+  const items = entries.map((item) => {
+    const percent = hasValue ? (item.valueUsd / totalValue) * 100 : 0;
 
-  return safeEntries.map((item) => ({
-    ...item,
-    percent: Math.round((item.value / safeTotal) * 100),
-  }));
+    return {
+      ...item,
+      percent,
+      percentLabel: formatDistributionPercent(percent),
+    };
+  });
+
+  return {
+    hasValue,
+    items,
+    positiveAssetCount: items.filter((item) => item.valueUsd > 0).length,
+  };
 }
 
 function PortfolioTrendChart({ points }) {
@@ -216,10 +308,10 @@ function PortfolioTrendChart({ points }) {
   );
 }
 
-function AssetDistributionChart({ items }) {
+function AssetDistributionChart({ distribution }) {
   const radius = 38;
   const circumference = 2 * Math.PI * radius;
-  const segments = items.reduce((result, item) => {
+  const segments = distribution.items.filter((item) => item.percent > 0).reduce((result, item) => {
     const previousOffset = result.reduce((sum, segment) => sum + segment.length, 0);
     const length = (item.percent / 100) * circumference;
 
@@ -242,19 +334,45 @@ function AssetDistributionChart({ items }) {
             strokeDashoffset={-item.offset}
           />
         ))}
-        <text className="asset-donut-chart__label" x="56" y="53">3</text>
-        <text className="asset-donut-chart__sublabel" x="56" y="67">redes</text>
+        <text className="asset-donut-chart__label" x="56" y="53">{distribution.positiveAssetCount}</text>
+        <text className="asset-donut-chart__sublabel" x="56" y="67">activos</text>
       </svg>
 
+      {!distribution.hasValue ? <p className="dashboard-note asset-distribution-empty">Sin activos para distribuir</p> : null}
+
       <div className="asset-distribution-list">
-        {items.map((item) => (
+        {distribution.items.map((item) => (
           <div className="asset-distribution-item" key={item.label}>
             <span style={{ backgroundColor: item.color }} aria-hidden="true" />
             <strong>{item.label}</strong>
-            <small>{item.percent}%</small>
+            <small>{item.percentLabel}</small>
           </div>
         ))}
       </div>
+    </div>
+  );
+}
+
+function ActivitySkeletonRows() {
+  return (
+    <div className="dashboard-activity-list dashboard-activity-skeleton-list" aria-label="Sincronizando actividad multired">
+      {[0, 1, 2].map((item) => (
+        <div className="dashboard-activity-row dashboard-activity-row--skeleton" key={item}>
+          <span className="dashboard-skeleton dashboard-skeleton--icon" aria-hidden="true" />
+          <div className="dashboard-activity-main">
+            <span className="dashboard-skeleton dashboard-skeleton--text dashboard-skeleton--wide" />
+            <span className="dashboard-skeleton dashboard-skeleton--text" />
+          </div>
+          <div className="dashboard-activity-amount">
+            <span className="dashboard-skeleton dashboard-skeleton--text" />
+            <span className="dashboard-skeleton dashboard-skeleton--text dashboard-skeleton--short" />
+          </div>
+          <div className="dashboard-activity-meta">
+            <span className="dashboard-skeleton dashboard-skeleton--pill" />
+            <span className="dashboard-skeleton dashboard-skeleton--text dashboard-skeleton--short" />
+          </div>
+        </div>
+      ))}
     </div>
   );
 }
@@ -265,22 +383,39 @@ function DashboardHome({
   estimatedTotalUsdLoading,
   estimatedTotalUsdError,
   nativeBalanceSummary = [],
+  nativeAssetDistribution = [],
+  balanceStatus = "loading",
+  balanceUpdatedAt = "",
+  priceStatus = "loading",
+  priceUpdatedAt = "",
   recentActivity = [],
   activitySyncing = false,
+  activityLoaded = false,
   activitySyncError = "",
   activitySyncNotice = "",
   onRefreshActivity,
 }) {
   const totalLabel = estimatedTotalUsdLoading
-    ? "Calculando..."
+    ? "Cargando balance..."
     : estimatedTotalUsdError
       ? "Valor estimado no disponible"
       : formatUsd(typeof estimatedTotalUsd === "number" ? estimatedTotalUsd : 0);
+  const balanceUpdateLabel = formatRelativeUpdateTime(balanceUpdatedAt);
+  const priceUpdateLabel = formatRelativeUpdateTime(priceUpdatedAt);
   const activityError = normalizeActivityError(activitySyncError);
+  const hasActivity = recentActivity.length > 0;
+  const showActivitySkeleton = !hasActivity && (!activityLoaded || activitySyncing);
+  const showActivityEmpty = !activitySyncing && activityLoaded && !hasActivity;
+  const activityStatusLabel = getActivityStatusLabel({
+    syncing: activitySyncing,
+    loaded: activityLoaded,
+    error: activityError,
+    notice: activitySyncNotice,
+  });
   const incomingCount = recentActivity.filter((transaction) => transaction.direction === "incoming").length;
   const outgoingCount = recentActivity.filter((transaction) => transaction.direction === "outgoing").length;
   const trendPoints = buildPortfolioTrend(estimatedTotalUsd);
-  const distributionItems = buildDistribution(nativeBalanceSummary);
+  const distribution = buildDistribution(nativeAssetDistribution);
   const kpis = [
     { icon: "USD", label: "Balance estimado", value: totalLabel, hint: "Solo activos nativos" },
     { icon: "AS", label: "Activos", value: nativeBalanceSummary.length, hint: "SOL, tBNB y BTC" },
@@ -301,6 +436,15 @@ function DashboardHome({
               <p className="dashboard-note">
                 Activos en redes de prueba, sin valor comercial real. Hola, {displayName}.
               </p>
+              <p className={`dashboard-balance-state dashboard-balance-state--${balanceStatus}`}>
+                {getBalanceStatusLabel(balanceStatus)}
+                {balanceUpdateLabel ? ` · Ultima actualizacion: ${balanceUpdateLabel}` : ""}
+              </p>
+              {priceStatus === "cached" ? (
+                <p className="dashboard-note dashboard-balance-cache-note">
+                  Usando precios cacheados{priceUpdateLabel ? ` · ${priceUpdateLabel}` : ""}.
+                </p>
+              ) : null}
             </div>
 
             <div className="balance-hero-mark" aria-hidden="true">
@@ -352,7 +496,7 @@ function DashboardHome({
                 <p className="dashboard-note">Proporcion por activos nativos.</p>
               </div>
             </div>
-            <AssetDistributionChart items={distributionItems} />
+            <AssetDistributionChart distribution={distribution} />
           </article>
         </section>
 
@@ -362,6 +506,9 @@ function DashboardHome({
               <div>
                 <h2>Actividad reciente</h2>
                 <p className="dashboard-note">Ultimos movimientos sincronizados.</p>
+                <p className={`dashboard-activity-status ${activitySyncing ? "dashboard-activity-status--loading" : ""}`}>
+                  {activityStatusLabel}
+                </p>
               </div>
               <div className="placeholder-actions" style={{ marginTop: 0 }}>
                 <button className="inline-link-text" type="button" onClick={onRefreshActivity} disabled={activitySyncing}>
@@ -371,11 +518,17 @@ function DashboardHome({
               </div>
             </div>
 
-            {activitySyncing ? <p className="dashboard-note">Actualizando actividad...</p> : null}
+            {activitySyncing ? (
+              <p className="dashboard-note dashboard-activity-sync-copy">
+                {hasActivity
+                  ? "Actualizando actividad sin ocultar los movimientos actuales."
+                  : "Consultando movimientos en Solana, BNB y Bitcoin Testnet."}
+              </p>
+            ) : null}
             {activitySyncNotice && !activitySyncing ? <p className="dashboard-note">{activitySyncNotice}</p> : null}
             {activityError ? <p className="dashboard-soft-warning">{activityError}</p> : null}
 
-            {recentActivity.length > 0 ? (
+            {hasActivity ? (
               <div className="dashboard-activity-list">
                 {recentActivity.map((transaction) => {
                   const symbol = getActivitySymbol(transaction);
@@ -404,13 +557,17 @@ function DashboardHome({
                   );
                 })}
               </div>
-            ) : (
+            ) : null}
+
+            {showActivitySkeleton ? <ActivitySkeletonRows /> : null}
+
+            {showActivityEmpty ? (
               <div className="empty-activity-state dashboard-empty-state">
                 <span aria-hidden="true">TX</span>
                 <strong>Aun no tienes movimientos</strong>
                 <p>Envia, recibe o actualiza actividad para ver tus transacciones.</p>
               </div>
-            )}
+            ) : null}
           </article>
 
           <article className="dashboard-card dashboard-quick-actions-card">

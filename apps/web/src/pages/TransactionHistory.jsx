@@ -144,6 +144,10 @@ function normalizeSyncNotice(message) {
 
   const lowerMessage = message.toLowerCase();
 
+  if (lowerMessage.includes("parcial")) {
+    return "Historial cargado parcialmente.";
+  }
+
   if (
     lowerMessage.includes("permission")
     || lowerMessage.includes("api")
@@ -185,10 +189,51 @@ async function getOnChainTransactions(wallet) {
   return results.flatMap((result) => (result.status === "fulfilled" ? result.value : []));
 }
 
+function HistorySkeletonRows() {
+  return (
+    <>
+      {[0, 1, 2, 3].map((item) => (
+        <article className="history-table__row history-table__row--skeleton" role="row" key={item}>
+          <div className="history-movement-cell">
+            <span className="dashboard-skeleton dashboard-skeleton--icon" aria-hidden="true" />
+            <div>
+              <span className="dashboard-skeleton dashboard-skeleton--text dashboard-skeleton--wide" />
+              <span className="dashboard-skeleton dashboard-skeleton--text" />
+            </div>
+          </div>
+
+          <div>
+            <span className="dashboard-skeleton dashboard-skeleton--text dashboard-skeleton--wide" />
+            <span className="dashboard-skeleton dashboard-skeleton--text dashboard-skeleton--short" />
+          </div>
+
+          <div>
+            <span className="dashboard-skeleton dashboard-skeleton--text" />
+          </div>
+
+          <div>
+            <span className="dashboard-skeleton dashboard-skeleton--pill" />
+          </div>
+
+          <div>
+            <span className="dashboard-skeleton dashboard-skeleton--text" />
+            <span className="dashboard-skeleton dashboard-skeleton--text dashboard-skeleton--short" />
+          </div>
+
+          <div>
+            <span className="dashboard-skeleton dashboard-skeleton--text" />
+          </div>
+        </article>
+      ))}
+    </>
+  );
+}
+
 function TransactionHistory({ user }) {
   const [transactions, setTransactions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
+  const [loaded, setLoaded] = useState(false);
   const [syncError, setSyncError] = useState("");
   const [syncNotice, setSyncNotice] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
@@ -198,24 +243,38 @@ function TransactionHistory({ user }) {
     let isMounted = true;
 
     async function loadTransactions() {
-      setLoading(true);
+      const isManualRefresh = refreshTick > 0;
+
+      if (isManualRefresh) {
+        setSyncing(true);
+      } else {
+        setLoading(true);
+        setLoaded(false);
+        setSyncing(true);
+      }
+
       setSyncError("");
       setSyncNotice("");
 
       try {
         const wallet = await getUserWallet(user.uid);
-        const [storedTransactions, onChainTransactions] = await Promise.all([
-          getStoredTransactions(user.uid),
-          getOnChainTransactions(wallet),
-        ]);
+        const storedTransactions = await getStoredTransactions(user.uid);
 
-        if (isMounted) {
-          setTransactions(mergeTransactions(storedTransactions, onChainTransactions));
+        if (isMounted && storedTransactions.length > 0) {
+          setTransactions(storedTransactions);
+          setLoaded(true);
           setLoading(false);
         }
 
         if (wallet) {
-          setSyncing(true);
+          const onChainTransactions = await getOnChainTransactions(wallet);
+
+          if (isMounted && (storedTransactions.length > 0 || onChainTransactions.length > 0)) {
+            setTransactions(mergeTransactions(storedTransactions, onChainTransactions));
+            setLoaded(true);
+            setLoading(false);
+          }
+
           const syncResult = await syncWalletActivity(user.uid, wallet);
           const [updatedStoredTransactions, updatedOnChainTransactions] = await Promise.all([
             getStoredTransactions(user.uid),
@@ -226,12 +285,16 @@ function TransactionHistory({ user }) {
             setTransactions(mergeTransactions(updatedStoredTransactions, updatedOnChainTransactions));
             setSyncError(syncResult.hasOnlyFailures ? normalizeSyncError(syncResult.message) : "");
             setSyncNotice(syncResult.hasOnlyFailures ? "" : normalizeSyncNotice(syncResult.message));
+            setLoaded(true);
           }
+        } else if (isMounted) {
+          setLoaded(true);
         }
       } catch {
         if (isMounted) {
           setSyncError("No se pudo actualizar actividad en este momento.");
           setSyncNotice("");
+          setLoaded(true);
         }
       } finally {
         if (isMounted) {
@@ -259,8 +322,30 @@ function TransactionHistory({ user }) {
   }, [searchTerm, transactions]);
 
   function handleRefreshActivity() {
+    if (loading || syncing) {
+      return;
+    }
+
     setRefreshTick((currentTick) => currentTick + 1);
   }
+
+  const hasSearch = searchTerm.trim().length > 0;
+  const hasTransactions = transactions.length > 0;
+  const hasFilteredTransactions = filteredTransactions.length > 0;
+  const showSkeleton = (loading || syncing) && !hasTransactions;
+  const showSearchEmpty = loaded && hasSearch && !hasFilteredTransactions && !showSkeleton;
+  const showEmptyState = !loading && !syncing && loaded && !hasSearch && !hasTransactions;
+  const historyStatusLabel = loading && !loaded
+    ? "Sincronizando historial multired..."
+    : syncing
+      ? "Actualizando historial..."
+      : syncError
+        ? "No se pudo actualizar toda la actividad"
+        : syncNotice.toLowerCase().includes("parcial")
+          ? "Historial cargado parcialmente"
+          : loaded
+            ? "Historial actualizado"
+            : "Sincronizando historial multired...";
 
   return (
     <AppShell
@@ -283,7 +368,7 @@ function TransactionHistory({ user }) {
           </label>
 
           <button className="auth-button-secondary history-refresh-button" type="button" onClick={handleRefreshActivity} disabled={loading || syncing}>
-            {syncing ? "Actualizando..." : "Actualizar actividad"}
+            {loading || syncing ? "Actualizando..." : "Actualizar actividad"}
           </button>
         </article>
 
@@ -295,21 +380,23 @@ function TransactionHistory({ user }) {
             <div>
               <h2>Actividad registrada</h2>
               <p className="dashboard-note">Movimientos enviados, recibidos y sincronizados.</p>
+              <p className={`history-sync-status ${loading || syncing ? "history-sync-status--loading" : ""}`}>
+                {historyStatusLabel}
+              </p>
+              {loading || syncing ? (
+                <p className="dashboard-note history-sync-copy">
+                  {hasTransactions
+                    ? "Actualizando historial sin ocultar los movimientos actuales."
+                    : "Consultando movimientos en Solana, BNB y Bitcoin Testnet."}
+                </p>
+              ) : null}
             </div>
             <span className="card-pill card-pill--muted">
               {filteredTransactions.length} movimientos
             </span>
           </div>
 
-          {loading ? (
-            <div className="history-loading-state">Preparando historial...</div>
-          ) : filteredTransactions.length === 0 ? (
-            <div className="empty-activity-state">
-              <span aria-hidden="true">TX</span>
-              <strong>Aun no tienes movimientos</strong>
-              <p>Envia, recibe o actualiza actividad para ver tus transacciones.</p>
-            </div>
-          ) : (
+          {hasFilteredTransactions ? (
             <div className="history-table" role="table" aria-label="Actividad registrada">
               <div className="history-table__head" role="row">
                 <span>Movimiento</span>
@@ -368,7 +455,31 @@ function TransactionHistory({ user }) {
                 );
               })}
             </div>
-          )}
+          ) : showSkeleton ? (
+            <div className="history-table" role="table" aria-label="Sincronizando historial multired">
+              <div className="history-table__head" role="row">
+                <span>Movimiento</span>
+                <span>Red / Activo</span>
+                <span>Monto</span>
+                <span>Estado</span>
+                <span>Tx Hash</span>
+                <span>Fecha</span>
+              </div>
+              <HistorySkeletonRows />
+            </div>
+          ) : showSearchEmpty ? (
+            <div className="empty-activity-state">
+              <span aria-hidden="true">TX</span>
+              <strong>No se encontraron movimientos con ese criterio.</strong>
+              <p>Ajusta la busqueda por red, activo o hash de transaccion.</p>
+            </div>
+          ) : showEmptyState ? (
+            <div className="empty-activity-state">
+              <span aria-hidden="true">TX</span>
+              <strong>No hay movimientos registrados</strong>
+              <p>Envia, recibe o actualiza actividad para ver tus transacciones.</p>
+            </div>
+          ) : null}
         </article>
       </section>
     </AppShell>

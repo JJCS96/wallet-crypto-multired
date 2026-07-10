@@ -98,9 +98,6 @@ function ReceiveFunds({ user }) {
   const addressExplorerUrl = getAddressExplorerUrl(networkId, currentAddress);
   const receivableAssets = getAssetsForNetwork(networkId);
   const receiveAddressNote = getReceiveAddressNote(networkId, receivableAssets);
-  const qrUrl = canUseCurrentAddress
-    ? `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(currentAddress)}`
-    : "";
 
   async function handleCopyAddress() {
     if (!canUseCurrentAddress) {
@@ -140,7 +137,7 @@ function ReceiveFunds({ user }) {
               steps={[
                 "Crear Wallet nueva.",
                 "O restaurar una existente con frase semilla.",
-                "Despues podras compartir direcciones y QR.",
+                "Despues podras copiar direcciones publicas por red.",
               ]}
               primaryAction={{ to: APP_ROUTES.createWallet, label: "Crear Wallet" }}
               secondaryAction={{ to: APP_ROUTES.restoreWallet, label: "Restaurar Wallet" }}
@@ -201,18 +198,6 @@ function ReceiveFunds({ user }) {
                   {copyMessage ? <div className="auth-success receive-copy-message">{copyMessage}</div> : null}
                 </div>
               </div>
-
-              <aside className="receive-qr-panel" aria-label="Codigo QR de direccion">
-                <p className="placeholder-kicker">Codigo QR</p>
-                <h3>Escanea o copia</h3>
-                {canUseCurrentAddress ? (
-                  <img className="receive-qr-image" src={qrUrl} alt={`Codigo QR para ${currentNetwork.label}`} />
-                ) : (
-                  <div className="receive-qr-image receive-qr-image--empty">
-                    QR de direccion
-                  </div>
-                )}
-              </aside>
             </div>
 
             {hasBitcoinMainnetAddress ? (

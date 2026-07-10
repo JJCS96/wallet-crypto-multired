@@ -5,7 +5,8 @@ import WalletEmptyState from "../components/wallet/WalletEmptyState";
 import { ASSETS, ASSET_IDS, getAssetDisplayName, getVisibleAssetIds } from "../config/assets";
 import { APP_ROUTES } from "../constants/routes";
 import { getBalanceByNetwork } from "../services/blockchain/balance.service";
-import { getNativeAssetPricesUsd } from "../services/market/prices.service";
+import { readCachedNativeAssetPricesUsd, getNativeAssetPricesUsd } from "../services/market/prices.service";
+import { readDashboardBalanceCache, writeDashboardBalanceCache } from "../services/dashboard/dashboard-cache.service";
 import {
   getBitcoinTestnetOnChainActivity,
   getBnbNativeOnChainActivity,
@@ -24,6 +25,28 @@ const ASSET_COLORS = {
   [ASSET_IDS.bnbBep20Demo]: "#f0b90b",
   [ASSET_IDS.bitcoinNative]: "#f7931a",
 };
+
+const NATIVE_ASSET_IDS = [
+  ASSET_IDS.solanaNative,
+  ASSET_IDS.bnbNative,
+  ASSET_IDS.bitcoinNative,
+];
+
+const PRICE_KEYS_BY_ASSET_ID = {
+  [ASSET_IDS.solanaNative]: "solana",
+  [ASSET_IDS.bnbNative]: "bnb",
+  [ASSET_IDS.bitcoinNative]: "bitcoin",
+};
+
+const BALANCE_TIMEOUTS_BY_ASSET_ID = {
+  [ASSET_IDS.solanaNative]: 8000,
+  [ASSET_IDS.solanaSplDemo]: 8000,
+  [ASSET_IDS.bnbNative]: 8000,
+  [ASSET_IDS.bnbBep20Demo]: 8000,
+  [ASSET_IDS.bitcoinNative]: 10000,
+};
+
+const PRICE_TIMEOUT_MS = 5000;
 
 function getDisplayName(user) {
   if (user?.displayName) {
@@ -74,12 +97,121 @@ function getFallbackBalanceMap() {
   return Object.fromEntries(ASSET_ORDER.map((assetId) => [assetId, null]));
 }
 
-function calculateEstimatedTotalUsd(balanceMap, prices) {
+function hasPriceData(prices) {
   return (
-    (balanceMap[ASSET_IDS.solanaNative]?.balance || 0) * prices.solana
-    + (balanceMap[ASSET_IDS.bnbNative]?.balance || 0) * prices.bnb
-    + (balanceMap[ASSET_IDS.bitcoinNative]?.balance || 0) * prices.bitcoin
+    typeof prices?.solana === "number"
+    && typeof prices?.bnb === "number"
+    && typeof prices?.bitcoin === "number"
+    && Number.isFinite(prices.solana)
+    && Number.isFinite(prices.bnb)
+    && Number.isFinite(prices.bitcoin)
   );
+}
+
+function hasKnownNativeBalance(balanceMap) {
+  return NATIVE_ASSET_IDS.some((assetId) => (
+    typeof balanceMap[assetId]?.balance === "number"
+    && Number.isFinite(balanceMap[assetId].balance)
+  ));
+}
+
+function isUsableBalanceResult(result) {
+  return typeof result?.balance === "number" && Number.isFinite(result.balance);
+}
+
+function buildCachedBalanceMap(uid) {
+  const cache = readDashboardBalanceCache(uid);
+
+  if (!cache) {
+    return {
+      balanceMap: getFallbackBalanceMap(),
+      updatedAt: "",
+      hasCache: false,
+    };
+  }
+
+  return {
+    balanceMap: {
+      ...getFallbackBalanceMap(),
+      ...cache.balances,
+    },
+    updatedAt: cache.updatedAt || "",
+    hasCache: Object.values(cache.balances || {}).some(isUsableBalanceResult),
+  };
+}
+
+function withTimeout(promise, timeoutMs, timeoutMessage) {
+  let timeoutId;
+
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => {
+      timeoutId = globalThis.setTimeout(() => {
+        globalThis.clearTimeout(timeoutId);
+        reject(new Error(timeoutMessage));
+      }, timeoutMs);
+    }),
+  ]).finally(() => {
+    if (timeoutId) {
+      globalThis.clearTimeout(timeoutId);
+    }
+  });
+}
+
+function buildTimeoutBalanceResult(assetId) {
+  const asset = ASSETS[assetId];
+
+  return {
+    network: asset.network,
+    symbol: asset.symbol,
+    balance: null,
+    source: "timeout",
+    error: "Balance no disponible temporalmente.",
+  };
+}
+
+async function getAssetBalanceWithTimeout(assetId, wallet) {
+  const asset = ASSETS[assetId];
+  const timeoutMs = BALANCE_TIMEOUTS_BY_ASSET_ID[assetId] || 8000;
+
+  try {
+    const result = await withTimeout(
+      getBalanceByNetwork(asset.network, wallet, assetId),
+      timeoutMs,
+      `${assetId}-balance-timeout`,
+    );
+
+    return [assetId, result];
+  } catch {
+    return [assetId, buildTimeoutBalanceResult(assetId)];
+  }
+}
+
+function calculateEstimatedTotalUsd(balanceMap, prices) {
+  return getNativeAssetValueDistribution(balanceMap, prices).reduce(
+    (sum, asset) => sum + asset.valueUsd,
+    0,
+  );
+}
+
+function getNativeAssetValueDistribution(balanceMap, prices = {}) {
+  return NATIVE_ASSET_IDS.map((assetId) => {
+    const asset = ASSETS[assetId];
+    const balance = balanceMap[assetId]?.balance || 0;
+    const priceKey = PRICE_KEYS_BY_ASSET_ID[assetId];
+    const priceUsd = prices && typeof prices[priceKey] === "number" && Number.isFinite(prices[priceKey])
+      ? prices[priceKey]
+      : 0;
+
+    return {
+      id: asset.id,
+      label: asset.symbol,
+      balance,
+      priceUsd,
+      valueUsd: balance * priceUsd,
+      color: ASSET_COLORS[assetId],
+    };
+  });
 }
 
 function getActivitySyncMessage(results) {
@@ -160,13 +292,48 @@ function Dashboard({ user }) {
   const [loading, setLoading] = useState(true);
   const [assets, setAssets] = useState([]);
   const [nativeBalanceSummary, setNativeBalanceSummary] = useState([]);
+  const [nativeAssetDistribution, setNativeAssetDistribution] = useState([]);
+  const [balanceStatus, setBalanceStatus] = useState("loading");
+  const [balanceUpdatedAt, setBalanceUpdatedAt] = useState("");
+  const [priceStatus, setPriceStatus] = useState("loading");
+  const [priceUpdatedAt, setPriceUpdatedAt] = useState("");
   const [estimatedTotalUsd, setEstimatedTotalUsd] = useState(0);
   const [estimatedTotalUsdLoading, setEstimatedTotalUsdLoading] = useState(false);
   const [estimatedTotalUsdError, setEstimatedTotalUsdError] = useState("");
   const [recentActivity, setRecentActivity] = useState([]);
   const [activitySyncing, setActivitySyncing] = useState(false);
+  const [activityLoaded, setActivityLoaded] = useState(false);
   const [activitySyncError, setActivitySyncError] = useState("");
   const [activitySyncNotice, setActivitySyncNotice] = useState("");
+
+  function applyBalancePresentation(balanceMap, prices, status, updatedAt = "") {
+    const canEstimateUsd = hasPriceData(prices);
+    const hasBalanceData = hasKnownNativeBalance(balanceMap);
+
+    setAssets(ASSET_ORDER.map((assetId) => buildAssetTile(assetId, balanceMap[assetId])));
+    setNativeBalanceSummary(getNativeSummary(balanceMap));
+    setNativeAssetDistribution(getNativeAssetValueDistribution(balanceMap, canEstimateUsd ? prices : {}));
+    setBalanceStatus(status);
+    setBalanceUpdatedAt(updatedAt);
+
+    if (!hasBalanceData && status === "loading") {
+      setEstimatedTotalUsdLoading(true);
+      setEstimatedTotalUsdError("");
+      return;
+    }
+
+    if (canEstimateUsd && hasBalanceData) {
+      setEstimatedTotalUsd(calculateEstimatedTotalUsd(balanceMap, prices));
+      setEstimatedTotalUsdError("");
+      setEstimatedTotalUsdLoading(false);
+      return;
+    }
+
+    if (status !== "loading" || hasBalanceData) {
+      setEstimatedTotalUsdError("Valor estimado no disponible");
+      setEstimatedTotalUsdLoading(false);
+    }
+  }
 
   async function refreshActivity(currentWallet = wallet) {
     if (!currentWallet) {
@@ -174,6 +341,7 @@ function Dashboard({ user }) {
     }
 
     setActivitySyncing(true);
+    setActivityLoaded((currentValue) => currentValue && recentActivity.length > 0);
     setActivitySyncError("");
     setActivitySyncNotice("");
 
@@ -185,6 +353,7 @@ function Dashboard({ user }) {
     } catch {
       setActivitySyncError("No se pudo sincronizar la actividad en este momento.");
     } finally {
+      setActivityLoaded(true);
       setActivitySyncing(false);
     }
   }
@@ -192,10 +361,165 @@ function Dashboard({ user }) {
   useEffect(() => {
     let isMounted = true;
 
+    async function refreshPricesInBackground(getCurrentBalanceMap, getCurrentUpdatedAt) {
+      const cachedPrices = readCachedNativeAssetPricesUsd({ allowExpired: true });
+
+      if (cachedPrices && isMounted) {
+        setPriceStatus("cached");
+        setPriceUpdatedAt(cachedPrices.updatedAt || "");
+        applyBalancePresentation(
+          getCurrentBalanceMap(),
+          cachedPrices.prices,
+          hasKnownNativeBalance(getCurrentBalanceMap()) ? "updating" : "loading",
+          getCurrentUpdatedAt(),
+        );
+      }
+
+      try {
+        const prices = await getNativeAssetPricesUsd({ timeoutMs: PRICE_TIMEOUT_MS });
+
+        if (!isMounted) {
+          return null;
+        }
+
+        setPriceStatus("ready");
+        setPriceUpdatedAt(new Date().toISOString());
+        applyBalancePresentation(
+          getCurrentBalanceMap(),
+          prices,
+          hasKnownNativeBalance(getCurrentBalanceMap()) ? "updating" : "loading",
+          getCurrentUpdatedAt(),
+        );
+        return prices;
+      } catch {
+        if (isMounted) {
+          setPriceStatus(cachedPrices ? "cached" : "error");
+          setPriceUpdatedAt(cachedPrices?.updatedAt || "");
+          applyBalancePresentation(
+            getCurrentBalanceMap(),
+            cachedPrices?.prices || null,
+            hasKnownNativeBalance(getCurrentBalanceMap()) ? "partial" : "error",
+            getCurrentUpdatedAt(),
+          );
+        }
+
+        return cachedPrices?.prices || null;
+      }
+    }
+
+    async function refreshBalancesInBackground(currentWallet, initialBalanceMap, initialPrices, initialUpdatedAt) {
+      let currentBalanceMap = { ...initialBalanceMap };
+      let currentPrices = initialPrices;
+      let currentBalanceUpdatedAt = initialUpdatedAt || "";
+      const completedNativeAssets = new Set();
+      const failedNativeAssets = new Set();
+
+      function getBalanceStatus() {
+        if (completedNativeAssets.size === 0) {
+          return hasKnownNativeBalance(currentBalanceMap) ? "updating" : "loading";
+        }
+
+        if (failedNativeAssets.size > 0) {
+          return "partial";
+        }
+
+        return completedNativeAssets.size === NATIVE_ASSET_IDS.length ? "ready" : "updating";
+      }
+
+      function applyCurrentBalance(updatedAt = currentBalanceUpdatedAt) {
+        currentBalanceUpdatedAt = updatedAt || currentBalanceUpdatedAt;
+        applyBalancePresentation(currentBalanceMap, currentPrices, getBalanceStatus(), currentBalanceUpdatedAt);
+      }
+
+      const pricePromise = refreshPricesInBackground(
+        () => currentBalanceMap,
+        () => currentBalanceUpdatedAt,
+      ).then((prices) => {
+        currentPrices = prices;
+
+        if (isMounted) {
+          applyCurrentBalance();
+        }
+      });
+
+      const balanceJobs = ASSET_ORDER.map(async (assetId) => {
+        const [resolvedAssetId, result] = await getAssetBalanceWithTimeout(assetId, currentWallet);
+        const existingResult = currentBalanceMap[resolvedAssetId];
+        const nextResult = isUsableBalanceResult(result) ? result : existingResult || result;
+
+        currentBalanceMap = {
+          ...currentBalanceMap,
+          [resolvedAssetId]: nextResult,
+        };
+
+        if (NATIVE_ASSET_IDS.includes(resolvedAssetId)) {
+          completedNativeAssets.add(resolvedAssetId);
+
+          if (!isUsableBalanceResult(result)) {
+            failedNativeAssets.add(resolvedAssetId);
+          }
+        }
+
+        if (isMounted) {
+          const updatedAt = new Date().toISOString();
+          writeDashboardBalanceCache(user.uid, currentBalanceMap);
+          applyCurrentBalance(updatedAt);
+        }
+      });
+
+      await Promise.allSettled(balanceJobs);
+      await pricePromise;
+
+      if (isMounted) {
+        writeDashboardBalanceCache(user.uid, currentBalanceMap);
+        applyBalancePresentation(
+          currentBalanceMap,
+          currentPrices,
+          failedNativeAssets.size > 0 ? "partial" : "ready",
+          new Date().toISOString(),
+        );
+      }
+    }
+
+    async function loadActivityInBackground(currentWallet) {
+      setActivitySyncing(true);
+      setActivityLoaded(false);
+      setActivitySyncError("");
+      setActivitySyncNotice("");
+
+      try {
+        const storedTransactions = await loadStoredActivity(user.uid);
+
+        if (isMounted && storedTransactions.length > 0) {
+          setRecentActivity(storedTransactions.slice(0, 5));
+        }
+
+        const { results, transactions } = await syncAndLoadActivity(user.uid, currentWallet);
+
+        if (isMounted) {
+          setActivitySyncNotice(getActivitySyncMessage(results));
+          setActivitySyncError(getActivitySyncError(results));
+          setRecentActivity(transactions);
+          setActivityLoaded(true);
+        }
+      } catch {
+        if (isMounted) {
+          setActivitySyncError("No se pudo sincronizar la actividad en este momento.");
+          setActivityLoaded(true);
+        }
+      } finally {
+        if (isMounted) {
+          setActivitySyncing(false);
+        }
+      }
+    }
+
     async function loadDashboard() {
       setLoading(true);
       setEstimatedTotalUsdError("");
       setEstimatedTotalUsdLoading(true);
+      setBalanceStatus("loading");
+      setPriceStatus("loading");
 
       try {
         const currentWallet = await getUserWallet(user.uid);
@@ -209,69 +533,52 @@ function Dashboard({ user }) {
         if (!currentWallet) {
           setAssets([]);
           setNativeBalanceSummary([]);
+          setNativeAssetDistribution([]);
+          setBalanceStatus("error");
+          setBalanceUpdatedAt("");
+          setPriceStatus("error");
+          setPriceUpdatedAt("");
+          setEstimatedTotalUsdLoading(false);
           setRecentActivity([]);
+          setActivityLoaded(true);
           setLoading(false);
           return;
         }
 
-        const fallbackBalanceMap = getFallbackBalanceMap();
-        setAssets(ASSET_ORDER.map((assetId) => buildAssetTile(assetId, fallbackBalanceMap[assetId])));
-        setNativeBalanceSummary(getNativeSummary(fallbackBalanceMap));
+        const cachedBalance = buildCachedBalanceMap(user.uid);
+        const cachedPrices = readCachedNativeAssetPricesUsd({ allowExpired: true });
+        const initialStatus = cachedBalance.hasCache ? "updating" : "loading";
+
+        if (cachedPrices) {
+          setPriceStatus("cached");
+          setPriceUpdatedAt(cachedPrices.updatedAt || "");
+        }
+
+        applyBalancePresentation(
+          cachedBalance.balanceMap,
+          cachedPrices?.prices || null,
+          initialStatus,
+          cachedBalance.updatedAt,
+        );
         setLoading(false);
 
-        const balanceEntries = await Promise.all(
-          ASSET_ORDER.map(async (assetId) => {
-            try {
-              return [assetId, await getBalanceByNetwork(ASSETS[assetId].network, currentWallet, assetId)];
-            } catch {
-              return [assetId, null];
-            }
-          }),
-        );
-        const balanceMap = Object.fromEntries(balanceEntries);
-
-        if (!isMounted) {
-          return;
-        }
-
-        setAssets(ASSET_ORDER.map((assetId) => buildAssetTile(assetId, balanceMap[assetId])));
-        setNativeBalanceSummary(getNativeSummary(balanceMap));
-
-        try {
-          const prices = await getNativeAssetPricesUsd();
-
+        void refreshBalancesInBackground(
+          currentWallet,
+          cachedBalance.balanceMap,
+          cachedPrices?.prices || null,
+          cachedBalance.updatedAt,
+        ).finally(() => {
           if (isMounted) {
-            setEstimatedTotalUsd(calculateEstimatedTotalUsd(balanceMap, prices));
+            void loadActivityInBackground(currentWallet);
           }
-        } catch {
-          if (isMounted) {
-            setEstimatedTotalUsdError("Valor estimado no disponible");
-          }
-        }
-
+        });
+      } catch {
         if (isMounted) {
-          const initialTransactions = await loadRecentActivity(user.uid, currentWallet);
-
-          if (isMounted) {
-            setRecentActivity(initialTransactions);
-          }
-        }
-
-        if (isMounted) {
-          setActivitySyncing(true);
-          const { results, transactions } = await syncAndLoadActivity(user.uid, currentWallet);
-
-          if (isMounted) {
-            setActivitySyncNotice(getActivitySyncMessage(results));
-            setActivitySyncError(getActivitySyncError(results));
-            setRecentActivity(transactions);
-            setActivitySyncing(false);
-          }
-        }
-      } finally {
-        if (isMounted) {
-          setEstimatedTotalUsdLoading(false);
           setLoading(false);
+          setEstimatedTotalUsdLoading(false);
+          setEstimatedTotalUsdError("No se pudo cargar el Dashboard.");
+          setBalanceStatus("error");
+          setActivityLoaded(true);
           setActivitySyncing(false);
         }
       }
@@ -305,8 +612,14 @@ function Dashboard({ user }) {
           estimatedTotalUsdLoading={estimatedTotalUsdLoading}
           estimatedTotalUsdError={estimatedTotalUsdError}
           nativeBalanceSummary={nativeBalanceSummary}
+          nativeAssetDistribution={nativeAssetDistribution}
+          balanceStatus={balanceStatus}
+          balanceUpdatedAt={balanceUpdatedAt}
+          priceStatus={priceStatus}
+          priceUpdatedAt={priceUpdatedAt}
           recentActivity={recentActivity}
           activitySyncing={activitySyncing}
+          activityLoaded={activityLoaded}
           activitySyncError={activitySyncError}
           activitySyncNotice={activitySyncNotice}
           onRefreshActivity={() => refreshActivity()}
