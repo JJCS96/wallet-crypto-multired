@@ -12,11 +12,11 @@ import { initializeApp, getApps, getApp } from "firebase/app";
 
 // getAuth permite usar Firebase Authentication.
 // Lo usaremos para login, registro, recuperación de contraseña y logout.
-import { getAuth } from "firebase/auth";
+import { connectAuthEmulator, getAuth } from "firebase/auth";
 
 // getFirestore permite conectarnos a la base de datos Firestore.
 // Lo usaremos para guardar datos no críticos del usuario.
-import { getFirestore } from "firebase/firestore";
+import { connectFirestoreEmulator, getFirestore } from "firebase/firestore";
 
 // Configuración de Firebase.
 // Estos valores vienen del archivo .env.local.
@@ -39,6 +39,13 @@ export const auth = getAuth(app);
 
 // Exportamos db para usar Firestore en otros archivos.
 export const db = getFirestore(app);
+
+// Modo emuladores (solo desarrollo): `npm run dev:emulators` usa Auth y Firestore
+// locales, sin tocar un proyecto real de Firebase. Ver README > Probar con emuladores.
+if (import.meta.env.DEV && import.meta.env.VITE_USE_FIREBASE_EMULATORS === "true") {
+  connectAuthEmulator(auth, "http://127.0.0.1:9099", { disableWarnings: true });
+  connectFirestoreEmulator(db, "127.0.0.1", 8080);
+}
 
 // Exportamos la app por defecto por si otro archivo necesita usar la instancia completa.
 export default app;
