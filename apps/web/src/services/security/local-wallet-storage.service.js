@@ -1,3 +1,11 @@
+/**
+ * Archivo: local-wallet-storage.service.js
+ * Propósito: Mantiene en memoria el flujo temporal de creación de wallet.
+ * Funcionalidades:
+ * - Guarda la frase solo mientras el usuario completa el onboarding.
+ * - Permite actualizar o limpiar el flujo pendiente.
+ * - No persiste seed ni mnemonic en localStorage, sessionStorage o Firestore.
+ */
 const pendingWalletFlows = new Map();
 
 export function getPendingWalletFlow(uid) {

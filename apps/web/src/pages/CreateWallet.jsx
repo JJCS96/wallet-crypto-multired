@@ -1,3 +1,11 @@
+/**
+ * Archivo: CreateWallet.jsx
+ * Propósito: Inicia la creación de una wallet generando una frase de recuperación local.
+ * Funcionalidades:
+ * - Verifica si el usuario ya tiene direcciones públicas guardadas.
+ * - Genera una frase temporal solo en el navegador.
+ * - Permite avanzar al respaldo o reiniciar el flujo sin tocar Firebase.
+ */
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import AppShell from "../components/layout/AppShell";

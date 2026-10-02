@@ -1,3 +1,11 @@
+/**
+ * Archivo: networks.js
+ * Propósito: Centraliza las redes de prueba soportadas por NovaWallet.
+ * Funcionalidades:
+ * - Define labels, rutas de derivación y explorers.
+ * - Mantiene Solana Devnet, Bitcoin Testnet y BNB Smart Chain Testnet.
+ * - Evita mezclar mainnet con la demo académica.
+ */
 export const NETWORKS = {
   solana: {
     id: "solana",

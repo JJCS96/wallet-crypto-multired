@@ -1,3 +1,11 @@
+/**
+ * Archivo: firebase.js
+ * Propósito: Inicializa Firebase para autenticación y Firestore de NovaWallet.
+ * Funcionalidades:
+ * - Lee configuración pública desde variables Vite.
+ * - Exporta instancias compartidas de Auth y Firestore.
+ * - No maneja ni almacena secretos de wallet.
+ */
 // Importamos las funciones necesarias para inicializar Firebase.
 // initializeApp sirve para conectar nuestra app React con el proyecto Firebase.
 import { initializeApp, getApps, getApp } from "firebase/app";

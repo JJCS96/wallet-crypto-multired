@@ -1,3 +1,11 @@
+/**
+ * Archivo: address-validation.js
+ * Propósito: Valida direcciones públicas antes de recibir o enviar activos.
+ * Funcionalidades:
+ * - Diferencia Bitcoin Testnet de mainnet.
+ * - Valida formato básico de Solana y BNB.
+ * - Evita preparar transacciones para redes equivocadas.
+ */
 export function isValidSolanaAddress(address) {
   return /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(address.trim());
 }
@@ -19,6 +27,7 @@ export function isValidBnbAddress(address) {
 }
 
 export function isValidAddressForNetwork(networkId, address) {
+  // La validación se hace por red para reducir riesgo de enviar fondos a una dirección incompatible.
   const normalizedAddress = address.trim();
 
   if (!normalizedAddress) {

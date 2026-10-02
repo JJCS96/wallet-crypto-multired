@@ -1,3 +1,11 @@
+/**
+ * Archivo: fee.service.js
+ * Propósito: Centraliza cálculos de comisiones y conversiones de unidades para envíos.
+ * Funcionalidades:
+ * - Calcula comisión de aplicación y fee de red estimado.
+ * - Convierte SOL a lamports con precisión entera.
+ * - Evita comparar montos en unidades incompatibles.
+ */
 import { APP_COMMISSION_RATE } from "../../config/economic-model";
 
 export const LAMPORTS_PER_SOL_INT = 1_000_000_000n;
@@ -29,6 +37,7 @@ export function calculateTransactionFees(networkId, amount, options = {}) {
 }
 
 export function parseSolToLamports(value) {
+  // Convierte SOL a lamports usando BigInt para validar saldo sin errores de punto flotante.
   const normalizedValue = String(value).trim();
 
   if (!/^\d+(\.\d+)?$/.test(normalizedValue)) {

@@ -1,3 +1,12 @@
+/**
+ * Archivo: Dashboard.jsx
+ * Propósito: Orquesta la vista principal del panel con balances reales, precios estimados y actividad multired.
+ * Funcionalidades:
+ * - Carga direcciones públicas de la wallet del usuario desde Firestore.
+ * - Consulta balances en Solana Devnet, BNB Testnet y Bitcoin Testnet.
+ * - Calcula valor estimado USD solo con activos nativos.
+ * - Sincroniza actividad on-chain sin exponer frase semilla ni claves privadas.
+ */
 import { useEffect, useState } from "react";
 import AppShell from "../components/layout/AppShell";
 import DashboardHome from "../components/dashboard/DashboardHome";
@@ -141,6 +150,7 @@ function buildCachedBalanceMap(uid) {
 }
 
 function withTimeout(promise, timeoutMs, timeoutMessage) {
+  // Cada red tiene un límite de espera para que una falla RPC no bloquee todo el Dashboard.
   let timeoutId;
 
   return Promise.race([
@@ -188,6 +198,7 @@ async function getAssetBalanceWithTimeout(assetId, wallet) {
 }
 
 function calculateEstimatedTotalUsd(balanceMap, prices) {
+  // El total USD solo usa activos nativos con precio conocido.
   return getNativeAssetValueDistribution(balanceMap, prices).reduce(
     (sum, asset) => sum + asset.valueUsd,
     0,
@@ -195,6 +206,7 @@ function calculateEstimatedTotalUsd(balanceMap, prices) {
 }
 
 function getNativeAssetValueDistribution(balanceMap, prices = {}) {
+  // La distribución se calcula por valor estimado, no por cantidad cruda de moneda.
   return NATIVE_ASSET_IDS.map((assetId) => {
     const asset = ASSETS[assetId];
     const balance = balanceMap[assetId]?.balance || 0;
@@ -252,6 +264,7 @@ async function loadStoredActivity(uid) {
 }
 
 async function loadOnChainActivity(currentWallet) {
+  // Consulta actividad pública en paralelo; no requiere contraseña ni desbloquear el vault.
   const jobs = [];
 
   if (currentWallet?.solanaAddress) {
@@ -307,6 +320,7 @@ function Dashboard({ user }) {
   const [activitySyncNotice, setActivitySyncNotice] = useState("");
 
   function applyBalancePresentation(balanceMap, prices, status, updatedAt = "") {
+    // Se usa una misma fuente de balances y precios para total, resumen y distribución.
     const canEstimateUsd = hasPriceData(prices);
     const hasBalanceData = hasKnownNativeBalance(balanceMap);
 

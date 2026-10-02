@@ -1,3 +1,11 @@
+/**
+ * Archivo: solana-token.service.js
+ * Propósito: Soporta tokens SPL demo configurables en Solana Devnet.
+ * Funcionalidades:
+ * - Lee el mint demo desde variables públicas Vite.
+ * - Consulta balances SPL y crea ATA destino cuando aplica.
+ * - Firma localmente transferencias SPL demo sin usar USDT real ni mainnet.
+ */
 import {
   createAssociatedTokenAccountInstruction,
   createTransferInstruction,
@@ -15,8 +23,10 @@ import { ASSETS, ASSET_IDS } from "../../config/assets";
 import { deriveSolanaKeypair } from "./solana.service";
 import {
   buildSolanaExplorerUrl,
+  confirmSolanaBroadcast,
   getSolanaConnection,
   isValidSolanaPublicKey,
+  readSolanaTransactionDetails,
 } from "./solana-rpc.service";
 
 function getSplAsset() {
@@ -182,6 +192,10 @@ export async function estimateSplDemoTransferFee({ fromAddress, toAddress, amoun
   };
 }
 
+/**
+ * Envía el token SPL demo configurado.
+ * Si el mint no existe en variables de entorno, el token no debe mostrarse como activo enviable.
+ */
 export async function sendSignedSplDemoTransfer({ mnemonic, expectedFromAddress, toAddress, amountUnits }) {
   if (!isValidSolanaPublicKey(expectedFromAddress) || !isValidSolanaPublicKey(toAddress)) {
     throw new Error("invalid-solana-address");
@@ -207,23 +221,8 @@ export async function sendSignedSplDemoTransfer({ mnemonic, expectedFromAddress,
   const signature = await connection.sendRawTransaction(transaction.serialize(), {
     preflightCommitment: "confirmed",
   });
-  const confirmation = await connection.confirmTransaction(
-    {
-      signature,
-      blockhash: latestBlockhash.blockhash,
-      lastValidBlockHeight: latestBlockhash.lastValidBlockHeight,
-    },
-    "confirmed",
-  );
-
-  if (confirmation.value.err) {
-    throw new Error("transaction-rejected");
-  }
-
-  const transactionDetails = await connection.getTransaction(signature, {
-    commitment: "confirmed",
-    maxSupportedTransactionVersion: 0,
-  });
+  await confirmSolanaBroadcast(connection, signature, latestBlockhash);
+  const { transactionDetails } = await readSolanaTransactionDetails(connection, signature);
 
   return {
     signature,

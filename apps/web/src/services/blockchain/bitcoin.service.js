@@ -1,7 +1,16 @@
+/**
+ * Archivo: bitcoin.service.js
+ * Propósito: Integra NovaWallet con Bitcoin Testnet para BTC nativo.
+ * Funcionalidades:
+ * - Deriva direcciones testnet y valida formato tb1.
+ * - Consulta UTXOs y fee rate desde API pública testnet.
+ * - Construye, firma y transmite PSBTs sin tocar mainnet ni fondos reales.
+ */
 import { Buffer } from "buffer";
 import { HDNodeWallet, SigningKey } from "ethers";
 import { networks, payments, Psbt } from "bitcoinjs-lib";
 import { NETWORKS } from "../../constants/networks";
+import { createBroadcastUnconfirmedError } from "./broadcast-confirmation";
 
 const SATOSHIS_PER_BTC = 100_000_000;
 const BITCOIN_TESTNET_API_URL = (import.meta.env.VITE_BITCOIN_TESTNET_API_URL || "https://mempool.space/testnet/api").replace(/\/$/, "");
@@ -64,6 +73,10 @@ function estimateFeeSatoshis(inputCount, outputCount, feeRate) {
   return estimateP2wpkhVsize(inputCount, outputCount) * BigInt(feeRate);
 }
 
+/**
+ * Selecciona UTXOs suficientes para cubrir monto, comisión y posible cambio.
+ * Evita crear salidas dust que la red podría rechazar.
+ */
 function selectBitcoinUtxos({ utxos, amountSatoshis, feeRate }) {
   if (amountSatoshis < BITCOIN_TESTNET_DUST_SATOSHIS) {
     throw new Error("bitcoin-amount-below-dust");
@@ -249,6 +262,10 @@ export async function estimateBitcoinTestnetTransfer({ fromAddress, toAddress, a
   };
 }
 
+/**
+ * Construye y firma una transacción BTC Testnet.
+ * Solo se publica el hex firmado; la frase y la clave privada permanecen locales.
+ */
 export async function sendSignedBitcoinTestnetTransfer({ mnemonic, expectedFromAddress, toAddress, amountSatoshis }) {
   assertValidBitcoinTestnetAddress(expectedFromAddress);
   assertValidBitcoinTestnetAddress(toAddress);
@@ -300,20 +317,32 @@ export async function sendSignedBitcoinTestnetTransfer({ mnemonic, expectedFromA
   psbt.signAllInputs(signer);
   psbt.finalizeAllInputs();
 
-  const rawTx = psbt.extractTransaction().toHex();
-  const response = await fetch(`${BITCOIN_TESTNET_API_URL}/tx`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "text/plain",
-    },
-    body: rawTx,
-  });
+  const signedTransaction = psbt.extractTransaction();
+  const rawTx = signedTransaction.toHex();
+  // El txid se calcula localmente para poder rastrear el envío aunque la respuesta del broadcast se pierda.
+  const localTxid = signedTransaction.getId();
+  let response;
+
+  try {
+    response = await fetch(`${BITCOIN_TESTNET_API_URL}/tx`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "text/plain",
+      },
+      body: rawTx,
+    });
+  } catch {
+    throw createBroadcastUnconfirmedError({
+      txHash: localTxid,
+      explorerUrl: buildBitcoinTestnetTxExplorerUrl(localTxid),
+    });
+  }
 
   if (!response.ok) {
     throw new Error("bitcoin-broadcast-failed");
   }
 
-  const txid = (await response.text()).trim();
+  const txid = (await response.text().catch(() => "")).trim() || localTxid;
 
   return {
     txHash: txid,

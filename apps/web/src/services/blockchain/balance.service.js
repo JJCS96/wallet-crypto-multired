@@ -1,3 +1,11 @@
+/**
+ * Archivo: balance.service.js
+ * Propósito: Centraliza la consulta de balances por red y activo.
+ * Funcionalidades:
+ * - Resuelve direcciones públicas de la wallet según red.
+ * - Consulta SOL, tBNB, BTC y tokens demo configurados.
+ * - Devuelve errores amigables sin exponer datos sensibles.
+ */
 import { getMockBalanceByNetwork } from "./mock-balance.service";
 import { getBitcoinTestnetBalance } from "./bitcoin.service";
 import { getBep20DemoBalance } from "./bep20.service";
@@ -23,6 +31,10 @@ function getWalletAddressForNetwork(wallet, networkId) {
   return "";
 }
 
+/**
+ * Obtiene el balance de una red/activo usando únicamente direcciones públicas.
+ * No desbloquea el vault ni requiere frase semilla para consultar saldos.
+ */
 export async function getBalanceByNetwork(networkId, wallet, assetId = null) {
   if (networkId === "solana") {
     const address = getWalletAddressForNetwork(wallet, networkId);

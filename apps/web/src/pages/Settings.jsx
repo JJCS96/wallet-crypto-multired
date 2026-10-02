@@ -1,3 +1,11 @@
+/**
+ * Archivo: Settings.jsx
+ * Propósito: Pantalla de configuración, seguridad y estado técnico de NovaWallet.
+ * Funcionalidades:
+ * - Muestra el estado de Firebase, RPCs y tokens configurables.
+ * - Permite acciones de sesión y mantenimiento del vault local.
+ * - Explica qué información sensible no se guarda en la nube.
+ */
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import AppShell from "../components/layout/AppShell";
@@ -43,7 +51,7 @@ function Settings({ user }) {
       try {
         const [currentWallet, hasVault] = await Promise.all([
           getUserWallet(user.uid),
-          isVaultAvailable(),
+          isVaultAvailable(user.uid),
         ]);
 
         if (isMounted) {
@@ -92,7 +100,7 @@ function Settings({ user }) {
     setVaultActionLoading(true);
 
     try {
-      await deleteEncryptedVault();
+      await deleteEncryptedVault(user.uid);
       setVaultAvailable(false);
       setSettingsMessage("Vault local eliminado de este dispositivo.");
     } catch {

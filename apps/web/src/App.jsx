@@ -1,3 +1,11 @@
+/**
+ * Archivo: App.jsx
+ * Propósito: Define la arquitectura de rutas de NovaWallet y protege el acceso según la sesión de Firebase Auth.
+ * Funcionalidades:
+ * - Escucha el estado de autenticación del usuario.
+ * - Separa rutas públicas, privadas y de onboarding de wallet.
+ * - Entrega el usuario autenticado a las pantallas que consultan Firebase, vault local y servicios Web3.
+ */
 import { useEffect, useState } from "react";
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { onAuthStateChanged } from "firebase/auth";
@@ -24,6 +32,10 @@ function PublicOnlyRoute({ user, children }) {
   return user ? <Navigate to={APP_ROUTES.dashboard} replace /> : children;
 }
 
+/**
+ * Evita que pantallas internas carguen sin usuario autenticado.
+ * La lógica sensible de wallet solo se ejecuta después de resolver la sesión.
+ */
 function ProtectedRoute({ user, children }) {
   return user ? children : <Navigate to={APP_ROUTES.login} replace />;
 }
@@ -33,6 +45,7 @@ function App() {
   const [authResolved, setAuthResolved] = useState(false);
 
   useEffect(() => {
+    // Firebase notifica cambios de sesión sin consultar manualmente credenciales.
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser);
       setAuthResolved(true);

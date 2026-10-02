@@ -1,3 +1,11 @@
+/**
+ * Archivo: activity-sync.service.js
+ * Propósito: Sincroniza actividad pública on-chain de Solana, BNB y Bitcoin Testnet.
+ * Funcionalidades:
+ * - Consulta exploradores/RPC usando direcciones públicas.
+ * - Registra movimientos encontrados si aún no existen en Firestore.
+ * - Reporta resultados parciales para no bloquear todo el historial si una red falla.
+ */
 import { getAssociatedTokenAddress } from "@solana/spl-token";
 import { LAMPORTS_PER_SOL, PublicKey } from "@solana/web3.js";
 import { formatEther, formatUnits, id, Interface, zeroPadValue } from "ethers";
@@ -49,6 +57,7 @@ function skippedResult(message) {
 }
 
 async function runActivityJob(job) {
+  // Cada red se ejecuta aislada para permitir sincronización parcial si otra fuente falla.
   try {
     const result = await job.run();
 
@@ -112,6 +121,7 @@ function getSolanaInstructionParties(parsedTransaction, solanaAddress, direction
 }
 
 export async function getSolanaNativeOnChainActivity(solanaAddress, limit = SOLANA_SIGNATURE_LIMIT) {
+  // Consulta transferencias SOL públicas; no requiere desbloquear el vault local.
   if (!isValidSolanaPublicKey(solanaAddress)) {
     throw new Error("Dirección Solana no disponible para consultar actividad.");
   }
@@ -452,6 +462,7 @@ async function getBnbNativeFromRecentBlocksActivity(bnbAddress, limit = 12) {
 }
 
 export async function getBnbNativeOnChainActivity(bnbAddress, limit = 12) {
+  // BNB puede venir de BscScan o de bloques recientes, según disponibilidad de API/RPC.
   if (!isValidBnbTestnetAddress(bnbAddress)) {
     throw new Error("Dirección BNB Testnet no disponible para consultar actividad.");
   }
@@ -710,6 +721,7 @@ async function syncBep20DemoActivity(uid, bnbAddress) {
 }
 
 export async function getBitcoinTestnetOnChainActivity(bitcoinAddress, limit = BITCOIN_TX_LIMIT) {
+  // Bitcoin Testnet se consulta por dirección pública y se transforma a movimientos entrantes/salientes.
   if (!isValidBitcoinTestnetAddress(bitcoinAddress)) {
     throw new Error("Dirección Bitcoin Testnet no disponible para consultar actividad.");
   }
@@ -784,6 +796,7 @@ async function syncBitcoinTestnetActivity(uid, bitcoinAddress) {
 }
 
 export async function syncWalletActivity(uid, wallet) {
+  // Orquesta la sincronización multired y devuelve un resumen para mostrar estados parciales en UI.
   if (!uid || !wallet) {
     return {
       createdCount: 0,

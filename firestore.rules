@@ -132,7 +132,7 @@ service cloud.firestore {
         && data.appFee is number
         && data.totalDebit is number
         && data.adminWallet is string
-        && data.status in ['simulated', 'success']
+        && data.status in ['simulated', 'success', 'confirmed', 'pending', 'failed']
         && data.mode in ['simulated', 'real-devnet', 'real-testnet']
         && (!('direction' in data) || data.direction in ['incoming', 'outgoing'])
         && (!('source' in data) || data.source in ['app-send', 'blockchain-sync'])
@@ -145,7 +145,7 @@ service cloud.firestore {
         && (!('slot' in data) || data.slot == null || data.slot is number)
         && (!('blockTime' in data) || data.blockTime == null || data.blockTime is number)
         && (!('explorerUrl' in data) || data.explorerUrl is string)
-        && (!('confirmationStatus' in data) || data.confirmationStatus in ['processed', 'confirmed', 'finalized', 'broadcast'])
+        && (!('confirmationStatus' in data) || data.confirmationStatus in ['processed', 'confirmed', 'finalized', 'broadcast', 'pending', 'failed'])
         && (!('appFeeMode' in data) || data.appFeeMode in ['on-chain', 'documented', 'pending'])
         && (!('chainId' in data) || data.chainId is number)
         && (!('gasUsed' in data) || data.gasUsed is number)
@@ -167,7 +167,16 @@ service cloud.firestore {
       match /transactions/{transactionId} {
         allow read: if isOwner(uid);
         allow create: if isOwner(uid) && isValidTransactionDocument(request.resource.data);
-        allow update, delete: if false;
+        allow update: if isOwner(uid)
+          && isValidTransactionDocument(request.resource.data)
+          && hasNoSensitiveFields(request.resource.data)
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'status',
+            'confirmationStatus',
+            'explorerUrl',
+            'updatedAt'
+          ]);
+        allow delete: if false;
       }
     }
 

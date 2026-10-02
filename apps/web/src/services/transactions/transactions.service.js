@@ -1,3 +1,11 @@
+/**
+ * Archivo: transactions.service.js
+ * Propósito: Persiste y combina movimientos de NovaWallet en Firestore.
+ * Funcionalidades:
+ * - Guarda envíos reales, simulados y tokens demo con datos públicos.
+ * - Evita duplicados por hash/red/activo.
+ * - Fusiona registros creados por la app con actividad detectada on-chain.
+ */
 import {
   addDoc,
   collection,
@@ -72,6 +80,7 @@ export async function createSimulatedTransaction(uid, transaction) {
 }
 
 export async function createRealDevnetTransaction(uid, transaction) {
+  // Guarda solo metadatos públicos de Solana: direcciones, monto, firma, estado y explorer.
   const reference = await addDoc(getTransactionsCollection(uid), {
     network: transaction.network,
     fromAddress: transaction.fromAddress,
@@ -102,6 +111,7 @@ export async function createRealDevnetTransaction(uid, transaction) {
 }
 
 export async function createRealBnbTestnetTransaction(uid, transaction) {
+  // Guarda datos públicos de BNB Testnet; nunca se persisten seed, privateKey ni password.
   const reference = await addDoc(getTransactionsCollection(uid), {
     network: "bnb",
     chainId: transaction.chainId,
@@ -132,6 +142,7 @@ export async function createRealBnbTestnetTransaction(uid, transaction) {
 }
 
 export async function createRealBitcoinTestnetTransaction(uid, transaction) {
+  // Registra BTC Testnet con hash y explorer, manteniendo fuera de Firestore cualquier dato de firma.
   const reference = await addDoc(getTransactionsCollection(uid), {
     network: "bitcoin",
     fromAddress: transaction.fromAddress,
@@ -160,6 +171,7 @@ export async function createRealBitcoinTestnetTransaction(uid, transaction) {
 }
 
 export async function createRealTokenTransaction(uid, transaction) {
+  // Los tokens demo se registran como metadatos públicos del contrato/mint y la transferencia.
   const payload = {
     network: transaction.network,
     assetType: "token",
@@ -207,6 +219,63 @@ export async function createRealTokenTransaction(uid, transaction) {
 
   const reference = await addDoc(getTransactionsCollection(uid), payload);
 
+  return reference.id;
+}
+
+/**
+ * Registra un envío que ya se transmitió a la red pero cuya confirmación no llegó a tiempo.
+ * Queda como "pending" con su hash; la sincronización on-chain lo actualiza al confirmarse.
+ */
+export async function createPendingBroadcastTransaction(uid, transaction, { txHash, explorerUrl }) {
+  const isToken = transaction.assetType === "token";
+  const payload = {
+    network: transaction.network,
+    assetType: isToken ? "token" : "native",
+    fromAddress: transaction.fromAddress,
+    toAddress: transaction.toAddress,
+    amount: transaction.amount,
+    networkFee: transaction.networkFee,
+    appFee: transaction.appFee,
+    appFeeRate: transaction.appFeeRate,
+    totalDebit: transaction.totalDebit,
+    adminWallet: transaction.adminWallet,
+    direction: "outgoing",
+    source: "app-send",
+    status: "pending",
+    confirmationStatus: "broadcast",
+    txHash,
+    explorerUrl,
+    mode: transaction.network === "solana" ? "real-devnet" : "real-testnet",
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  };
+
+  if (transaction.appFeeMode) {
+    payload.appFeeMode = transaction.appFeeMode;
+  }
+
+  if (transaction.network === "solana") {
+    payload.signature = txHash;
+  }
+
+  if (transaction.chainId != null) {
+    payload.chainId = transaction.chainId;
+  }
+
+  if (isToken) {
+    payload.tokenStandard = transaction.tokenStandard;
+    payload.tokenSymbol = transaction.tokenSymbol;
+
+    if (transaction.tokenMint) {
+      payload.tokenMint = transaction.tokenMint;
+    }
+
+    if (transaction.tokenAddress) {
+      payload.tokenAddress = transaction.tokenAddress;
+    }
+  }
+
+  const reference = await addDoc(getTransactionsCollection(uid), payload);
   return reference.id;
 }
 

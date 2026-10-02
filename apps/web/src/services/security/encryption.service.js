@@ -1,3 +1,11 @@
+/**
+ * Archivo: encryption.service.js
+ * Propósito: Utilidades genéricas de cifrado AES-GCM con clave derivada por PBKDF2.
+ * Funcionalidades:
+ * - Convierte datos binarios a Base64 para persistencia.
+ * - Cifra y descifra texto usando una contraseña del usuario.
+ * - No registra ni imprime valores sensibles.
+ */
 function arrayBufferToBase64(buffer) {
   const bytes = new Uint8Array(buffer);
   let binary = "";
@@ -21,6 +29,7 @@ function base64ToUint8Array(base64Value) {
 }
 
 export async function createEncryptionKeyFromPassphrase(passphrase, salt) {
+  // PBKDF2 endurece la contraseña antes de usarla como clave AES-GCM.
   const encoder = new TextEncoder();
   const baseKey = await window.crypto.subtle.importKey(
     "raw",
@@ -48,6 +57,7 @@ export async function createEncryptionKeyFromPassphrase(passphrase, salt) {
 }
 
 export async function encryptTextValue(value, passphrase) {
+  // Cada cifrado usa sal e IV nuevos para evitar reutilización criptográfica.
   const encoder = new TextEncoder();
   const iv = window.crypto.getRandomValues(new Uint8Array(12));
   const salt = window.crypto.getRandomValues(new Uint8Array(16));

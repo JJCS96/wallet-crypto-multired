@@ -1,3 +1,11 @@
+/**
+ * Archivo: RestoreWallet.jsx
+ * Propósito: Restaura una wallet existente a partir de una frase de recuperación del usuario.
+ * Funcionalidades:
+ * - Previsualiza direcciones derivadas antes de confirmar.
+ * - Crea un nuevo vault cifrado local.
+ * - Guarda solo direcciones públicas en Firestore.
+ */
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import AppShell from "../components/layout/AppShell";
@@ -63,6 +71,7 @@ function RestoreWallet({ user }) {
   }, [user.uid]);
 
   async function handlePreviewRecovery(mnemonic) {
+    // La previsualización deriva direcciones localmente antes de guardar cualquier dato público.
     setPreviewLoading(true);
     setError("");
 
@@ -100,7 +109,24 @@ function RestoreWallet({ user }) {
     setError("");
 
     try {
-      const result = await confirmWalletRecovery(user.uid, mnemonicSourceRef.current, walletPassword);
+      // La restauración confirma el vault cifrado local y guarda únicamente direcciones públicas.
+      let result = await confirmWalletRecovery(user.uid, mnemonicSourceRef.current, walletPassword);
+
+      if (!result.ok && result.requiresReplacementConfirmation) {
+        // Reemplazar una wallet o vault existente es irreversible si no se tiene su frase semilla.
+        const shouldReplace = globalThis.confirm(
+          `${result.message}\n\nAsegúrate de tener respaldada la frase semilla de la wallet actual. ¿Deseas continuar?`,
+        );
+
+        if (!shouldReplace) {
+          setError("Restauración cancelada. Tu wallet y vault actuales no se modificaron.");
+          return;
+        }
+
+        result = await confirmWalletRecovery(user.uid, mnemonicSourceRef.current, walletPassword, {
+          confirmReplacement: true,
+        });
+      }
 
       if (!result.ok) {
         mnemonicSourceRef.current = "";

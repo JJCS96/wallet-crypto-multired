@@ -1,3 +1,11 @@
+/**
+ * Archivo: solana-rpc.service.js
+ * Propósito: Integra NovaWallet con Solana Devnet mediante RPC.
+ * Funcionalidades:
+ * - Consulta balances SOL.
+ * - Estima comisiones de red.
+ * - Firma y envía transferencias SOL desde el navegador.
+ */
 import {
   Connection,
   LAMPORTS_PER_SOL,
@@ -6,6 +14,7 @@ import {
   Transaction,
 } from "@solana/web3.js";
 import { SOLANA_CLUSTER, SOLANA_RPC_URL } from "../../config/solana";
+import { awaitBroadcastConfirmation } from "./broadcast-confirmation";
 
 let cachedConnection = null;
 
@@ -115,22 +124,64 @@ export async function estimateSolanaTransferFee({
   return BigInt(lamports);
 }
 
-function withTimeout(promise, timeoutMs = 30000) {
-  return Promise.race([
-    promise,
-    new Promise((_, reject) => {
-      const timer = setTimeout(() => {
-        clearTimeout(timer);
-        reject(new Error("timeout"));
-      }, timeoutMs);
-    }),
-  ]);
-}
-
 export function buildSolanaExplorerUrl(signature) {
   return `https://explorer.solana.com/tx/${signature}?cluster=${SOLANA_CLUSTER}`;
 }
 
+/**
+ * Espera la confirmación de una firma ya transmitida.
+ * Un error on-chain es un rechazo definitivo; un timeout o fallo del RPC deja el envío como pendiente.
+ */
+export async function confirmSolanaBroadcast(connection, signature, latestBlockhash) {
+  const confirmation = await awaitBroadcastConfirmation(
+    connection.confirmTransaction(
+      {
+        signature,
+        blockhash: latestBlockhash.blockhash,
+        lastValidBlockHeight: latestBlockhash.lastValidBlockHeight,
+      },
+      "confirmed",
+    ),
+    {
+      txHash: signature,
+      explorerUrl: buildSolanaExplorerUrl(signature),
+      timeoutMs: 30000,
+    },
+  );
+
+  if (confirmation.value.err) {
+    throw new Error("transaction-rejected");
+  }
+
+  return confirmation;
+}
+
+/**
+ * Lee detalles opcionales (slot, fee, estado) de una transacción ya confirmada.
+ * Si el RPC falla aquí, la transferencia sigue siendo válida y se devuelven valores nulos.
+ */
+export async function readSolanaTransactionDetails(connection, signature) {
+  try {
+    const [transactionDetails, signatureStatus] = await Promise.all([
+      connection.getTransaction(signature, {
+        commitment: "confirmed",
+        maxSupportedTransactionVersion: 0,
+      }),
+      connection.getSignatureStatus(signature, {
+        searchTransactionHistory: true,
+      }),
+    ]);
+
+    return { transactionDetails, signatureStatus };
+  } catch {
+    return { transactionDetails: null, signatureStatus: null };
+  }
+}
+
+/**
+ * Envía SOL en Solana Devnet.
+ * La transacción se firma localmente con el keypair recibido y luego se transmite al RPC.
+ */
 export async function sendSignedSolanaTransfer({
   fromKeypair,
   toAddress,
@@ -157,28 +208,8 @@ export async function sendSignedSolanaTransfer({
     preflightCommitment: "confirmed",
   });
 
-  const confirmation = await withTimeout(
-    connection.confirmTransaction(
-      {
-        signature,
-        blockhash: latestBlockhash.blockhash,
-        lastValidBlockHeight: latestBlockhash.lastValidBlockHeight,
-      },
-      "confirmed",
-    ),
-  );
-
-  if (confirmation.value.err) {
-    throw new Error("transaction-rejected");
-  }
-
-  const transactionDetails = await connection.getTransaction(signature, {
-    commitment: "confirmed",
-    maxSupportedTransactionVersion: 0,
-  });
-  const signatureStatus = await connection.getSignatureStatus(signature, {
-    searchTransactionHistory: true,
-  });
+  const confirmation = await confirmSolanaBroadcast(connection, signature, latestBlockhash);
+  const { transactionDetails, signatureStatus } = await readSolanaTransactionDetails(connection, signature);
 
   return {
     signature,
@@ -189,7 +220,7 @@ export async function sendSignedSolanaTransfer({
       ? transactionDetails.meta.fee / LAMPORTS_PER_SOL
       : null,
     networkFeeLamports: transactionDetails?.meta?.fee ? BigInt(transactionDetails.meta.fee) : null,
-    confirmationStatus: signatureStatus.value?.confirmationStatus || "confirmed",
+    confirmationStatus: signatureStatus?.value?.confirmationStatus || "confirmed",
     confirmation,
   };
 }

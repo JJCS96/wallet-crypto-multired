@@ -1,3 +1,11 @@
+/**
+ * Archivo: DashboardHome.jsx
+ * Propósito: Componente visual del Dashboard con resumen de portafolio, KPIs, gráficos y actividad reciente.
+ * Funcionalidades:
+ * - Presenta balances y valor estimado recibidos desde Dashboard.jsx.
+ * - Dibuja gráficos livianos sin depender de datos sensibles.
+ * - Muestra estados claros para carga, sincronización parcial y actividad vacía.
+ */
 import { Link } from "react-router-dom";
 import { APP_ROUTES } from "../../constants/routes";
 
@@ -241,6 +249,7 @@ function buildPortfolioTrend(totalUsd) {
 }
 
 function buildDistribution(nativeAssetDistribution = []) {
+  // Construye la dona con porcentajes derivados del valor USD estimado de cada activo.
   const source = nativeAssetDistribution.length > 0
     ? nativeAssetDistribution
     : [

@@ -1,3 +1,11 @@
+/**
+ * Archivo: mnemonic.service.js
+ * Propósito: Genera, normaliza y valida frases semilla BIP39 para NovaWallet.
+ * Funcionalidades:
+ * - Usa aleatoriedad segura del navegador.
+ * - Valida la frase antes de derivar direcciones.
+ * - Selecciona posiciones aleatorias para confirmar el respaldo.
+ */
 import bip39 from "bip39";
 import { WALLET_CONFIRMATION_WORDS_COUNT } from "../../constants/wallet";
 import { normalizeMnemonicValue } from "../../validators/wallet.validators";
@@ -10,6 +18,7 @@ export function isWebCryptoSupported() {
 }
 
 export function generateMnemonicPhrase() {
+  // La frase se genera localmente; no se solicita a Firebase ni a ningún backend.
   if (!isWebCryptoSupported()) {
     throw new Error(WEB_CRYPTO_ERROR_MESSAGE);
   }
@@ -34,6 +43,7 @@ export function getMnemonicWordCount(mnemonic) {
 }
 
 function getSecureRandomIndex(maxExclusive) {
+  // Evita sesgo usando rechazo cuando el número aleatorio queda fuera del rango seguro.
   if (!isWebCryptoSupported()) {
     throw new Error(WEB_CRYPTO_ERROR_MESSAGE);
   }

@@ -1,3 +1,11 @@
+/**
+ * Archivo: assets.js
+ * Propósito: Define los activos que NovaWallet soporta en redes de prueba.
+ * Funcionalidades:
+ * - Mantiene SOL, tBNB y BTC Testnet siempre visibles.
+ * - Habilita USDT-DEMO SPL/BEP20 solo si existe mint o contrato configurado.
+ * - Centraliza decimales, símbolos y estándares de token para UI y servicios.
+ */
 export const ASSET_IDS = {
   solanaNative: "solana-native",
   solanaSplDemo: "solana-spl-demo",
@@ -94,6 +102,7 @@ export function getDefaultAssetIdForNetwork(networkId) {
 }
 
 export function isAssetVisible(asset) {
+  // Los tokens demo no configurados conservan soporte técnico, pero no aparecen como activos disponibles.
   return asset.assetType === "native" || asset.configured === true;
 }
 

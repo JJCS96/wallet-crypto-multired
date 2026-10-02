@@ -1,3 +1,11 @@
+/**
+ * Archivo: TransactionHistory.jsx
+ * Propósito: Pantalla de historial con movimientos guardados y actividad on-chain multired.
+ * Funcionalidades:
+ * - Combina transacciones registradas en Firestore con actividad pública de exploradores/RPC.
+ * - Mantiene estados de carga, actualización y sincronización parcial.
+ * - Filtra movimientos sin mostrar errores técnicos crudos al usuario.
+ */
 import { useEffect, useMemo, useState } from "react";
 import AppShell from "../components/layout/AppShell";
 import { getUserWallet } from "../services/user-wallets.service";
@@ -243,6 +251,7 @@ function TransactionHistory({ user }) {
     let isMounted = true;
 
     async function loadTransactions() {
+      // Carga historial guardado y actividad on-chain; si una red falla, conserva lo disponible.
       const isManualRefresh = refreshTick > 0;
 
       if (isManualRefresh) {
@@ -322,6 +331,7 @@ function TransactionHistory({ user }) {
   }, [searchTerm, transactions]);
 
   function handleRefreshActivity() {
+    // La actualización manual mantiene datos existentes visibles mientras sincroniza nuevas fuentes.
     if (loading || syncing) {
       return;
     }

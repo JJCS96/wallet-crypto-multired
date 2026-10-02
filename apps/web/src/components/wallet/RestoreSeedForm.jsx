@@ -1,3 +1,11 @@
+/**
+ * Archivo: RestoreSeedForm.jsx
+ * Propósito: Formulario para ingresar y validar las 12 palabras de recuperación.
+ * Funcionalidades:
+ * - Normaliza palabras y texto pegado.
+ * - Permite previsualizar direcciones derivadas.
+ * - Mantiene la frase dentro del flujo de restauración del navegador.
+ */
 import { useRef, useState } from "react";
 
 const SEED_WORD_COUNT = 12;

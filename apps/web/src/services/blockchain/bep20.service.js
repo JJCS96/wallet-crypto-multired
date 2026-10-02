@@ -1,3 +1,11 @@
+/**
+ * Archivo: bep20.service.js
+ * Propósito: Soporta tokens BEP20 demo configurables en BNB Smart Chain Testnet.
+ * Funcionalidades:
+ * - Lee el contrato demo desde variables públicas Vite.
+ * - Consulta balances y estima gas para transferencias BEP20.
+ * - Firma localmente transferencias de token demo sin usar USDT real ni mainnet.
+ */
 import {
   Contract,
   formatUnits,
@@ -11,6 +19,7 @@ import {
   assertBnbTestnetProvider,
   buildBnbExplorerUrl,
   getBnbProvider,
+  waitForBnbReceipt,
   weiToBnbNumber,
 } from "./bnb.service";
 
@@ -144,6 +153,10 @@ export async function estimateBep20DemoTransferFee({ fromAddress, toAddress, amo
   };
 }
 
+/**
+ * Envía el token BEP20 demo configurado.
+ * El contrato debe existir en BNB Testnet y no representa USDT real ni mainnet.
+ */
 export async function sendSignedBep20DemoTransfer({ mnemonic, expectedFromAddress, toAddress, amountUnits }) {
   if (!isAddress(expectedFromAddress) || !isAddress(toAddress)) {
     throw new Error("invalid-bnb-address");
@@ -179,11 +192,7 @@ export async function sendSignedBep20DemoTransfer({ mnemonic, expectedFromAddres
     gasLimit,
     gasPrice,
   });
-  const receipt = await tx.wait(1);
-
-  if (!receipt || receipt.status !== 1) {
-    throw new Error("transaction-rejected");
-  }
+  const receipt = await waitForBnbReceipt(tx);
 
   const receiptGasPrice = receipt.gasPrice || tx.gasPrice || gasPrice;
   const actualNetworkFeeWei = receipt.gasUsed * receiptGasPrice;

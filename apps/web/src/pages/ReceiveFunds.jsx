@@ -1,3 +1,11 @@
+/**
+ * Archivo: ReceiveFunds.jsx
+ * Propósito: Pantalla para compartir direcciones públicas de recepción por red.
+ * Funcionalidades:
+ * - Permite seleccionar Solana, BNB Testnet o Bitcoin Testnet.
+ * - Muestra activos recepcionables según configuración SPL/BEP20.
+ * - Copia direcciones públicas sin acceder al vault ni a claves privadas.
+ */
 import { useEffect, useMemo, useState } from "react";
 import AppShell from "../components/layout/AppShell";
 import WalletEmptyState from "../components/wallet/WalletEmptyState";
@@ -36,6 +44,7 @@ function getAddressExplorerUrl(networkId, address) {
 }
 
 function getReceiveAddressNote(networkId, receivableAssets) {
+  // Tokens SPL/BEP20 configurados se reciben en la misma dirección pública de su red.
   const hasToken = receivableAssets.some((asset) => asset.assetType === "token");
 
   if (networkId === "solana") {

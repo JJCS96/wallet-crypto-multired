@@ -1,3 +1,11 @@
+/**
+ * Archivo: auth.service.js
+ * Propósito: Encapsula autenticación con Firebase Auth y creación básica de perfil público.
+ * Funcionalidades:
+ * - Registro e inicio de sesión con email/contraseña o Google.
+ * - Creación de documentos públicos de usuario y configuración.
+ * - Cierre de sesión y recuperación de contraseña.
+ */
 // Importamos las funciones principales de Firebase Authentication.
 import {
   createUserWithEmailAndPassword,

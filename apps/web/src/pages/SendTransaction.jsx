@@ -1,4 +1,13 @@
-import { useEffect, useMemo, useState } from "react";
+/**
+ * Archivo: SendTransaction.jsx
+ * Propósito: Pantalla encargada de preparar, validar y ejecutar envíos desde NovaWallet.
+ * Funcionalidades:
+ * - Selección de red y activo disponible.
+ * - Validación de dirección destino, balance y comisiones.
+ * - Desbloqueo temporal del vault local para firmar transacciones.
+ * - Registro de metadatos públicos del movimiento en Firestore.
+ */
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import AppShell from "../components/layout/AppShell";
 import TransactionSummaryCard from "../components/transactions/TransactionSummaryCard";
@@ -48,11 +57,13 @@ import {
   createRealBitcoinTestnetTransaction,
   createRealDevnetTransaction,
   createRealTokenTransaction,
+  createPendingBroadcastTransaction,
   createSimulatedTransaction,
 } from "../services/transactions/transactions.service";
 import { isBitcoinMainnetAddress, isValidAddressForNetwork, isValidBitcoinTestnetAddress } from "../utils/address-validation";
 import { deriveSolanaKeypair } from "../services/blockchain/solana.service";
 import { isVaultAvailable, unlockEncryptedVault } from "../services/security/encrypted-vault.service";
+import { isBroadcastUnconfirmedError } from "../services/blockchain/broadcast-confirmation";
 
 function getWalletAddressForNetwork(wallet, networkId) {
   if (networkId === "solana") {
@@ -71,6 +82,7 @@ function getWalletAddressForNetwork(wallet, networkId) {
 }
 
 function normalizeBalanceResult(result) {
+  // Conserva unidades base para validar saldos sin mezclar SOL, lamports, wei o satoshis.
   return {
     balance: result.balance,
     balanceLamports: typeof result.balanceLamports === "number" ? BigInt(result.balanceLamports) : null,
@@ -128,6 +140,8 @@ function SendTransaction({ user }) {
   const [balanceError, setBalanceError] = useState("");
   const [balanceRefreshKey, setBalanceRefreshKey] = useState(0);
   const [lastTransactionResult, setLastTransactionResult] = useState(null);
+  // Bloquea un segundo envío antes de que React re-renderice con confirming=true.
+  const confirmInFlightRef = useRef(false);
 
   useEffect(() => {
     let isMounted = true;
@@ -162,7 +176,7 @@ function SendTransaction({ user }) {
       setVaultLoading(true);
 
       try {
-        const result = await isVaultAvailable();
+        const result = await isVaultAvailable(user.uid);
 
         if (isMounted) {
           setVaultAvailable(result);
@@ -179,7 +193,7 @@ function SendTransaction({ user }) {
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [user.uid]);
 
   useEffect(() => {
     let isMounted = true;
@@ -230,6 +244,7 @@ function SendTransaction({ user }) {
   }
 
   async function saveConfirmedTransactionMetadata(saveTransaction, { result, networkLabel, amountLabel }) {
+    // Firestore recibe solo metadatos públicos; la firma y la frase semilla permanecen locales.
     const hash = getResultHash(result);
 
     try {
@@ -248,6 +263,32 @@ function SendTransaction({ user }) {
     setBalanceRefreshKey((current) => current + 1);
   }
 
+  async function savePendingBroadcastMetadata(broadcastError) {
+    // La transacción ya salió a la red: se registra como pendiente y se cierra el resumen
+    // para que el usuario no la reenvíe pensando que falló.
+    const { txHash, explorerUrl } = broadcastError;
+
+    try {
+      await createPendingBroadcastTransaction(user.uid, {
+        ...preview,
+        appFeeMode: preview.appFeeMode || (preview.assetId === ASSET_IDS.solanaNative ? "on-chain" : null),
+      }, { txHash, explorerUrl });
+    } catch {
+      // El hash se muestra igualmente; la sincronización on-chain podrá registrarlo después.
+    }
+
+    setFormError("");
+    setSuccessMessage(
+      `La transacción se transmitió a ${preview.networkLabel} pero aún no está confirmada. Hash: ${formatTransactionHash(txHash)}. No la reenvíes: revisa su estado en el Explorer o en el historial.`,
+    );
+    setLastTransactionResult({ txHash, explorerUrl });
+    setBalanceRefreshKey((current) => current + 1);
+    setPreview(null);
+    setToAddress("");
+    setAmount("");
+    setWalletPassword("");
+  }
+
   function handleNetworkChange(nextNetworkId) {
     setNetworkId(nextNetworkId);
     setAssetId(getDefaultAssetIdForNetwork(nextNetworkId));
@@ -261,6 +302,7 @@ function SendTransaction({ user }) {
     setSuccessMessage("");
     setLastTransactionResult(null);
 
+    // Antes de pedir contraseña se validan red, dirección, monto, comisiones y balance.
     if (!wallet) {
       setFormError("Primero debes crear o restaurar una wallet para preparar transacciones.");
       return;
@@ -660,11 +702,17 @@ function SendTransaction({ user }) {
   async function handleConfirmTransaction(event) {
     event?.preventDefault();
 
+    // En esta etapa se desbloquea el vault solo para firmar; la frase se limpia en finally.
     if (!preview) {
       setFormError("No hay una transacción preparada para confirmar. Vuelve a revisar el resumen.");
       return;
     }
 
+    if (confirmInFlightRef.current) {
+      return;
+    }
+
+    confirmInFlightRef.current = true;
     setConfirming(true);
     setFormError("");
     setSuccessMessage("");
@@ -682,7 +730,7 @@ function SendTransaction({ user }) {
           return;
         }
 
-        unlockedVault.mnemonic = await unlockEncryptedVault(walletPassword);
+        unlockedVault.mnemonic = await unlockEncryptedVault(user.uid, walletPassword);
       }
 
       if (preview.assetId === ASSET_IDS.solanaNative) {
@@ -836,7 +884,9 @@ function SendTransaction({ user }) {
       setAmount("");
       setWalletPassword("");
     } catch (error) {
-      if (error?.message === "vault-not-found") {
+      if (isBroadcastUnconfirmedError(error)) {
+        await savePendingBroadcastMetadata(error);
+      } else if (error?.message === "vault-not-found") {
         setFormError("No existe vault local en este dispositivo. Restaura tu wallet para crear una contraseña local.");
       } else if (error?.message === "vault-unlock-failed") {
         setFormError("Contraseña incorrecta.");
@@ -877,6 +927,7 @@ function SendTransaction({ user }) {
       }
     } finally {
       unlockedVault.mnemonic = "";
+      confirmInFlightRef.current = false;
       setConfirming(false);
     }
   }

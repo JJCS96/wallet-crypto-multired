@@ -1,3 +1,11 @@
+/**
+ * Archivo: bnb.service.js
+ * Propósito: Integra NovaWallet con BNB Smart Chain Testnet para tBNB nativo.
+ * Funcionalidades:
+ * - Valida RPC y chainId 97.
+ * - Consulta balances y estima gas.
+ * - Firma localmente transacciones tBNB antes de enviarlas al RPC.
+ */
 import {
   formatEther,
   HDNodeWallet,
@@ -6,6 +14,7 @@ import {
   parseEther,
 } from "ethers";
 import { NETWORKS } from "../../constants/networks";
+import { awaitBroadcastConfirmation, createBroadcastUnconfirmedError } from "./broadcast-confirmation";
 
 export const BNB_TESTNET_CHAIN_ID = 97;
 export const BNB_TESTNET_EXPLORER_URL = "https://testnet.bscscan.com/tx/";
@@ -39,20 +48,35 @@ function assertValidBnbAddress(address, errorCode = "invalid-bnb-address") {
   }
 }
 
-function withTimeout(promise, timeoutMs = 45000) {
-  return Promise.race([
-    promise,
-    new Promise((_, reject) => {
-      const timer = setTimeout(() => {
-        clearTimeout(timer);
-        reject(new Error("timeout"));
-      }, timeoutMs);
-    }),
-  ]);
-}
-
 export function buildBnbExplorerUrl(txHash) {
   return `${BNB_TESTNET_EXPLORER_URL}${txHash}`;
+}
+
+/**
+ * Espera el recibo de una transacción ya transmitida.
+ * Un revert (CALL_EXCEPTION o status 0) es un rechazo definitivo; un timeout o fallo del RPC
+ * se reporta como broadcast-unconfirmed para no habilitar un reenvío duplicado.
+ */
+export async function waitForBnbReceipt(tx) {
+  const receipt = await awaitBroadcastConfirmation(tx.wait(1), {
+    txHash: tx.hash,
+    explorerUrl: buildBnbExplorerUrl(tx.hash),
+    timeoutMs: 45000,
+    isDefinitiveFailure: (error) => error?.code === "CALL_EXCEPTION",
+  });
+
+  if (!receipt) {
+    throw createBroadcastUnconfirmedError({
+      txHash: tx.hash,
+      explorerUrl: buildBnbExplorerUrl(tx.hash),
+    });
+  }
+
+  if (receipt.status !== 1) {
+    throw new Error("transaction-rejected");
+  }
+
+  return receipt;
 }
 
 async function getGasPrice(provider) {
@@ -81,6 +105,10 @@ async function estimateBnbTransferCost({ provider, fromAddress, toAddress, amoun
   };
 }
 
+/**
+ * Deriva la wallet EVM para BNB Testnet desde la misma frase semilla.
+ * La clave derivada solo se usa en memoria durante consultas de firma.
+ */
 export function deriveBnbWallet(mnemonic) {
   const wallet = HDNodeWallet.fromPhrase(
     mnemonic,
@@ -155,6 +183,10 @@ export async function estimateBnbTransferFee({ fromAddress, toAddress, amountWei
   };
 }
 
+/**
+ * Envía tBNB en BNB Smart Chain Testnet.
+ * La firma se realiza localmente y el RPC solo recibe la transacción firmada.
+ */
 export async function sendSignedBnbTransfer({ mnemonic, expectedFromAddress, toAddress, amountWei }) {
   assertValidBnbAddress(expectedFromAddress);
   assertValidBnbAddress(toAddress);
@@ -189,11 +221,7 @@ export async function sendSignedBnbTransfer({ mnemonic, expectedFromAddress, toA
     gasLimit,
     gasPrice,
   });
-  const receipt = await withTimeout(tx.wait(1));
-
-  if (!receipt || receipt.status !== 1) {
-    throw new Error("transaction-rejected");
-  }
+  const receipt = await waitForBnbReceipt(tx);
 
   const receiptGasPrice = receipt.gasPrice || tx.gasPrice || gasPrice;
   const gasUsed = receipt.gasUsed;

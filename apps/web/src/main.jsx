@@ -1,3 +1,10 @@
+/**
+ * Archivo: main.jsx
+ * Propósito: Punto de entrada de React/Vite para montar NovaWallet en el DOM.
+ * Funcionalidades:
+ * - Habilita Buffer para librerías Web3 que lo requieren en navegador.
+ * - Carga React, ReactDOM y App de forma diferida antes de renderizar.
+ */
 import { Buffer } from 'buffer'
 import './index.css'
 

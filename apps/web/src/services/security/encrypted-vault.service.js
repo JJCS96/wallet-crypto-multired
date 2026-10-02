@@ -1,9 +1,18 @@
+/**
+ * Archivo: encrypted-vault.service.js
+ * Propósito: Administra el vault cifrado local donde se guarda la frase semilla.
+ * Funcionalidades:
+ * - Usa IndexedDB como almacenamiento local.
+ * - Deriva una clave con PBKDF2 y cifra con AES-GCM.
+ * - Nunca guarda la contraseña ni mantiene una sesión global con la frase descifrada.
+ */
 import { normalizeMnemonicPhrase } from "./mnemonic.service";
 
 const VAULT_DB_NAME = "novawallet-vault";
 const VAULT_DB_VERSION = 1;
 const VAULT_STORE_NAME = "vaults";
-const VAULT_RECORD_ID = "main";
+// Registro único usado por versiones anteriores, cuando el vault no estaba separado por usuario.
+const LEGACY_VAULT_RECORD_ID = "main";
 const VAULT_VERSION = 1;
 const VAULT_ITERATIONS = 250000;
 
@@ -57,13 +66,19 @@ function openVaultDb() {
   });
 }
 
-async function readVaultRecord() {
+function assertVaultOwner(uid) {
+  if (!uid || typeof uid !== "string") {
+    throw new Error("vault-owner-required");
+  }
+}
+
+async function readVaultRecordById(recordId) {
   const database = await openVaultDb();
 
   return new Promise((resolve, reject) => {
     const transaction = database.transaction(VAULT_STORE_NAME, "readonly");
     const store = transaction.objectStore(VAULT_STORE_NAME);
-    const request = store.get(VAULT_RECORD_ID);
+    const request = store.get(recordId);
 
     request.onsuccess = () => resolve(request.result || null);
     request.onerror = () => reject(new Error("vault-read-failed"));
@@ -71,13 +86,30 @@ async function readVaultRecord() {
   });
 }
 
-async function writeVaultRecord(record) {
+/**
+ * Devuelve el vault del usuario. Si aún no tiene uno propio, usa el registro legado "main"
+ * para no bloquear wallets creadas antes de separar el vault por uid; la firma igualmente
+ * verifica que la dirección derivada coincida con la wallet de origen.
+ */
+async function readVaultRecord(uid) {
+  assertVaultOwner(uid);
+  const ownRecord = await readVaultRecordById(uid);
+
+  if (ownRecord) {
+    return ownRecord;
+  }
+
+  return readVaultRecordById(LEGACY_VAULT_RECORD_ID);
+}
+
+async function writeVaultRecord(uid, record) {
+  assertVaultOwner(uid);
   const database = await openVaultDb();
 
   return new Promise((resolve, reject) => {
     const transaction = database.transaction(VAULT_STORE_NAME, "readwrite");
     const store = transaction.objectStore(VAULT_STORE_NAME);
-    const request = store.put({ id: VAULT_RECORD_ID, ...record });
+    const request = store.put({ ...record, id: uid, ownerUid: uid });
 
     request.onerror = () => reject(new Error("vault-write-failed"));
     transaction.oncomplete = () => {
@@ -89,6 +121,7 @@ async function writeVaultRecord(record) {
 }
 
 async function deriveVaultKey(password, salt, iterations) {
+  // La clave se deriva en el navegador y no se almacena; se recrea solo al desbloquear.
   assertWebCryptoSupported();
   const encoder = new TextEncoder();
   const baseKey = await globalThis.crypto.subtle.importKey(
@@ -116,8 +149,19 @@ async function deriveVaultKey(password, salt, iterations) {
   );
 }
 
-export async function createEncryptedVault(mnemonic, password) {
+/**
+ * Cifra la frase normalizada con sal e IV únicos y la guarda en el registro del usuario.
+ * Si el usuario ya tiene un vault propio, exige replaceExisting para no destruir una frase
+ * cifrada sin confirmación explícita.
+ */
+export async function createEncryptedVault(uid, mnemonic, password, { replaceExisting = false } = {}) {
   assertWebCryptoSupported();
+  assertVaultOwner(uid);
+
+  if (!replaceExisting && await hasOwnEncryptedVault(uid)) {
+    throw new Error("vault-already-exists");
+  }
+
   const normalizedMnemonic = normalizeMnemonicPhrase(mnemonic);
   const encoder = new TextEncoder();
   const salt = globalThis.crypto.getRandomValues(new Uint8Array(16));
@@ -144,13 +188,14 @@ export async function createEncryptedVault(mnemonic, password) {
     updatedAt: now,
   };
 
-  await writeVaultRecord(vault);
+  await writeVaultRecord(uid, vault);
   return vault;
 }
 
-export async function unlockEncryptedVault(password) {
+export async function unlockEncryptedVault(uid, password) {
+  // Devuelve la frase descifrada solo al llamador que necesita firmar o restaurar.
   assertWebCryptoSupported();
-  const vault = await readVaultRecord();
+  const vault = await readVaultRecord(uid);
 
   if (!vault) {
     throw new Error("vault-not-found");
@@ -177,25 +222,40 @@ export async function unlockEncryptedVault(password) {
   }
 }
 
-export async function hasEncryptedVault() {
-  return Boolean(await readVaultRecord());
+export async function hasEncryptedVault(uid) {
+  return Boolean(await readVaultRecord(uid));
 }
 
-export async function isVaultAvailable() {
+/**
+ * Indica si el usuario tiene un vault propio (sin contar el registro legado compartido).
+ */
+export async function hasOwnEncryptedVault(uid) {
+  assertVaultOwner(uid);
+  return Boolean(await readVaultRecordById(uid));
+}
+
+export async function isVaultAvailable(uid) {
   try {
-    return await hasEncryptedVault();
+    return await hasEncryptedVault(uid);
   } catch {
     return false;
   }
 }
 
-export async function deleteEncryptedVault() {
+export async function deleteEncryptedVault(uid) {
+  // Elimina el vault que el usuario está usando: el propio o, si no existe, el registro legado.
+  const vault = await readVaultRecord(uid);
+
+  if (!vault) {
+    return;
+  }
+
   const database = await openVaultDb();
 
   return new Promise((resolve, reject) => {
     const transaction = database.transaction(VAULT_STORE_NAME, "readwrite");
     const store = transaction.objectStore(VAULT_STORE_NAME);
-    const request = store.delete(VAULT_RECORD_ID);
+    const request = store.delete(vault.id);
 
     request.onerror = () => reject(new Error("vault-delete-failed"));
     transaction.oncomplete = () => {

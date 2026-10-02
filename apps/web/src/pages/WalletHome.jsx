@@ -1,3 +1,11 @@
+/**
+ * Archivo: WalletHome.jsx
+ * Propósito: Pantalla "Mi Wallet" para consultar activos disponibles y direcciones públicas.
+ * Funcionalidades:
+ * - Muestra activos nativos y tokens demo configurados.
+ * - Consulta balances multired sin mostrar datos privados.
+ * - Expone únicamente direcciones públicas para recibir fondos.
+ */
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import AppShell from "../components/layout/AppShell";
@@ -72,6 +80,7 @@ function WalletHome({ user }) {
     let isMounted = true;
 
     async function loadWallet() {
+      // Mi Wallet consulta direcciones públicas; no requiere abrir el vault cifrado.
       setLoading(true);
 
       try {

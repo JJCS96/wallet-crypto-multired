@@ -1,3 +1,11 @@
+/**
+ * Archivo: ConfirmSeed.jsx
+ * Propósito: Valida el respaldo de la frase semilla y crea la wallet definitiva.
+ * Funcionalidades:
+ * - Solicita palabras específicas de la frase temporal.
+ * - Crea el vault cifrado local con contraseña del usuario.
+ * - Guarda en Firestore únicamente direcciones públicas.
+ */
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import AppShell from "../components/layout/AppShell";
@@ -93,7 +101,21 @@ function ConfirmSeed({ user }) {
     setIsSubmitting(true);
 
     try {
-      const result = await confirmWalletBackup(user.uid, walletPassword);
+      // Al confirmar, se cifra la frase en el vault local y Firestore recibe solo direcciones públicas.
+      let result = await confirmWalletBackup(user.uid, walletPassword);
+
+      if (!result.ok && result.requiresVaultReplacement) {
+        const shouldReplace = globalThis.confirm(
+          `${result.message} Si continúas, será reemplazado por el de esta nueva wallet. Asegúrate de tener respaldada la frase semilla anterior. ¿Deseas continuar?`,
+        );
+
+        if (!shouldReplace) {
+          setSubmitError("Creación cancelada. El vault local existente no se modificó.");
+          return;
+        }
+
+        result = await confirmWalletBackup(user.uid, walletPassword, { replaceExistingVault: true });
+      }
 
       if (!result.ok) {
         setSubmitError(result.message);

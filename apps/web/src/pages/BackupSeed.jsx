@@ -1,3 +1,11 @@
+/**
+ * Archivo: BackupSeed.jsx
+ * Propósito: Muestra la frase de recuperación temporal para que el usuario la respalde.
+ * Funcionalidades:
+ * - Mantiene el flujo local de creación antes de confirmar la wallet.
+ * - Obliga al usuario a confirmar que guardó la frase.
+ * - No persiste seed, mnemonic ni claves privadas en Firebase.
+ */
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import AppShell from "../components/layout/AppShell";
