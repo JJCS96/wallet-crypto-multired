@@ -9,6 +9,16 @@ Wallet web progresiva (PWA) **multired y no custodial** desarrollada como demo a
 > [!WARNING]
 > NovaWallet **no habilita mainnet**. Todos los activos están en redes de prueba o son tokens demo sin valor comercial. No uses una frase semilla que controle fondos reales.
 
+## Capturas
+
+| Inicio | Dashboard |
+| --- | --- |
+| ![Pantalla de inicio](docs/capturas/inicio.png) | ![Dashboard con balances por red](docs/capturas/dashboard.png) |
+| **Mi Wallet** | **Recibir** |
+| ![Activos y direcciones de la wallet](docs/capturas/mi-wallet.png) | ![Dirección pública para recibir fondos](docs/capturas/recibir.png) |
+| **Enviar** | **Historial** |
+| ![Formulario de envío con comisiones](docs/capturas/enviar.png) | ![Historial de transacciones en testnet](docs/capturas/historial.png) |
+
 ---
 
 ## Tabla de contenido
