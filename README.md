@@ -1,5 +1,9 @@
 # NovaWallet
 
+[![CI](https://github.com/JJCS96/wallet-crypto-multired/actions/workflows/ci.yml/badge.svg)](https://github.com/JJCS96/wallet-crypto-multired/actions/workflows/ci.yml)
+
+**Demo en vivo:** https://wallet-multired-dev.web.app
+
 Wallet web progresiva (PWA) **multired y no custodial** desarrollada como demo académica. Permite crear o restaurar una wallet con una frase de recuperación BIP39, proteger esa frase en un vault cifrado local del navegador y operar con activos reales de **redes de prueba**: Solana Devnet, BNB Smart Chain Testnet y Bitcoin Testnet.
 
 > [!WARNING]
@@ -25,6 +29,7 @@ Wallet web progresiva (PWA) **multired y no custodial** desarrollada como demo a
 14. [Solución de problemas](#solución-de-problemas)
 15. [Limitaciones conocidas y roadmap](#limitaciones-conocidas-y-roadmap)
 16. [Documentación adicional](#documentación-adicional)
+17. [Equipo y créditos](#equipo-y-créditos)
 
 ---
 
@@ -59,34 +64,32 @@ Wallet web progresiva (PWA) **multired y no custodial** desarrollada como demo a
 
 ## Estructura del repositorio
 
-El repositorio está organizado como monorepo. Hoy solo `apps/web` contiene código; las demás carpetas están reservadas para fases futuras.
+El código de la aplicación vive en `apps/web`; en la raíz están la configuración de Firebase y la documentación del proyecto.
 
 ```text
-wallet-multired/
+wallet-crypto-multired/
+├── .github/workflows/          # CI: lint y build en cada push y pull request
 ├── apps/
-│   ├── web/                    # Aplicación PWA (único paquete activo)
-│   │   ├── public/             # Manifest, íconos PWA
-│   │   ├── scripts/            # Utilidades Node (crear token SPL demo)
-│   │   ├── docs/               # Guías de seguridad y pruebas del frontend
-│   │   └── src/
-│   │       ├── components/     # Layout, dashboard, wallet, transacciones
-│   │       ├── config/         # Activos, wallets administrativas, modelo económico, Solana
-│   │       ├── constants/      # Redes, rutas, constantes del flujo de wallet
-│   │       ├── lib/            # Inicialización de Firebase
-│   │       ├── pages/          # Pantallas enrutadas
-│   │       ├── services/
-│   │       │   ├── blockchain/   # Solana, SPL, BNB, BEP20, Bitcoin, balances
-│   │       │   ├── security/     # Mnemónica, derivación, vault cifrado, flujos de wallet
-│   │       │   ├── transactions/ # Persistencia, comisiones, sincronización on-chain
-│   │       │   ├── market/       # Precios USD
-│   │       │   └── dashboard/    # Caché de balances
-│   │       ├── utils/          # Validación de direcciones y mnemónicas
-│   │       └── validators/     # Validación de formularios de wallet
-│   ├── api/                    # Reservado (vacío)
-│   └── mobile/                 # Reservado (vacío)
-├── packages/                   # Reservado: blockchain, config, core, shared (vacíos)
+│   └── web/                    # Aplicación PWA
+│       ├── public/             # Manifest, íconos PWA
+│       ├── scripts/            # Utilidades Node (crear token SPL demo)
+│       ├── docs/               # Guías de seguridad y pruebas del frontend
+│       └── src/
+│           ├── components/     # Layout, dashboard, wallet, transacciones
+│           ├── config/         # Activos, wallets administrativas, modelo económico, Solana
+│           ├── constants/      # Redes, rutas, constantes del flujo de wallet
+│           ├── lib/            # Inicialización de Firebase
+│           ├── pages/          # Pantallas enrutadas
+│           ├── services/
+│           │   ├── blockchain/   # Solana, SPL, BNB, BEP20, Bitcoin, balances
+│           │   ├── security/     # Mnemónica, derivación, vault cifrado, flujos de wallet
+│           │   ├── transactions/ # Persistencia, comisiones, sincronización on-chain
+│           │   ├── market/       # Precios USD
+│           │   └── dashboard/    # Caché de balances
+│           ├── utils/          # Validación de direcciones y mnemónicas
+│           └── validators/     # Validación de formularios de wallet
 ├── docs/                       # Manual de usuario, arquitectura de seguridad, flujos, viabilidad económica
-├── firebase.json               # Hosting + reglas e índices de Firestore
+├── firebase.json               # Hosting, reglas e índices de Firestore y emuladores
 ├── firestore.rules             # Reglas de seguridad de Firestore
 └── firestore.indexes.json
 ```
@@ -263,6 +266,22 @@ npm run dev
 
 Abre la URL que muestra Vite (normalmente `http://localhost:5173`). La generación de frases necesita Web Crypto, disponible en `localhost` y HTTPS.
 
+### Probar con emuladores (sin proyecto de Firebase)
+
+Si no quieres crear un proyecto de Firebase, puedes usar los emuladores locales de Auth y Firestore. Requiere [Firebase CLI](https://firebase.google.com/docs/cli) y Java 11+.
+
+```bash
+# Terminal 1: emuladores (UI en http://localhost:4000)
+cd apps/web
+npm run emulators
+
+# Terminal 2: la app conectada a los emuladores
+cd apps/web
+npm run dev:emulators
+```
+
+El botón "Continuar con Google" abre la pantalla del emulador, donde puedes crear una cuenta de prueba. La configuración está en `apps/web/.env.emulators` y usa un proyecto `demo-*`, así que nunca toca servicios reales de Firebase. Las redes blockchain siguen siendo las testnets públicas.
+
 ### Obtener fondos de prueba
 
 - **SOL Devnet:** faucet oficial de Solana (`faucet.solana.com`) o `solana airdrop`.
@@ -293,7 +312,7 @@ Todas las variables `VITE_*` se incrustan en el bundle y **son públicas** en el
 | `VITE_ADMIN_WALLET_BNB` | No | Dirección administrativa documental |
 | `VITE_ADMIN_WALLET_BTC` | No | Dirección administrativa documental |
 
-Los archivos `.env` y `.env.*` (salvo `.env.example`) están ignorados por git.
+Los archivos `.env` y `.env.*` (salvo `.env.example` y `.env.emulators`, que no contienen secretos) están ignorados por git.
 
 ## Scripts disponibles
 
@@ -302,6 +321,8 @@ Desde `apps/web`:
 | Comando | Descripción |
 | --- | --- |
 | `npm run dev` | Servidor de desarrollo con HMR |
+| `npm run emulators` | Emuladores locales de Firebase Auth y Firestore |
+| `npm run dev:emulators` | Servidor de desarrollo conectado a los emuladores |
 | `npm run build` | Build de producción en `apps/web/dist` (incluye service worker) |
 | `npm run preview` | Sirve el build localmente |
 | `npm run lint` | ESLint sobre todo el proyecto |
@@ -382,3 +403,14 @@ Guía detallada: [`apps/web/docs/token-deposit-testing.md`](apps/web/docs/token-
 - [Seguridad del frontend y manejo de la frase semilla](apps/web/docs/security.md)
 - [Pruebas de depósitos de tokens demo](apps/web/docs/token-deposit-testing.md)
 - [Checklist final](apps/web/docs/final-checklist.md)
+
+## Equipo y créditos
+
+Proyecto académico desarrollado en equipo:
+
+- **Jhonier Corozo Silva** ([@JJCS96](https://github.com/JJCS96)): base en React, autenticación con Firebase, dashboard, flujos de wallet, envíos y movimientos.
+- **Edison Vera Landazuri** ([@isaacvera26](https://github.com/isaacvera26))
+- [@hidalgoisaac99-lgtm](https://github.com/hidalgoisaac99-lgtm)
+- **Jonathan Vaccaro**: configuración de Firebase Hosting.
+
+Algunas correcciones y mejoras de mantenimiento se hicieron con asistencia de Claude (Anthropic) como herramienta de programación.
